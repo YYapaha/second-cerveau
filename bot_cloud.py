@@ -229,6 +229,15 @@ def analyser_contenu(contenu: str, source: str) -> str:
 
 # ── Handlers Telegram ─────────────────────────────────────────────────────────
 
+async def cmd_monid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.effective_chat.id
+    await update.message.reply_text(
+        f"🪪 Ton Chat ID : `{chat_id}`\n\n"
+        "Utilise ce numéro pour configurer le bookmarklet navigateur.",
+        parse_mode="Markdown",
+    )
+
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "🧠 *Second Cerveau Cloud* — je capture tout pour toi !\n\n"
@@ -387,6 +396,7 @@ def main() -> None:
     log.info("🤖 Bot Cloud démarré — Dropbox : %s", DROPBOX_FICHES)
 
     app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("monid", cmd_monid))
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("dernieres", cmd_dernieres))

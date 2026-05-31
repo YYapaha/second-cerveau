@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Installer le bookmarklet Second Cerveau</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; background: #0a0a0a; color: #e0e0e0; }
+  h1 { color: #6c5ce7; }
+  .step { background: #141414; border-radius: 8px; padding: 16px 20px; margin: 16px 0; }
+  .step h3 { margin: 0 0 8px 0; color: #a29bfe; }
+  input { width: 100%; padding: 8px; background: #222; border: 1px solid #444; border-radius: 4px; color: #fff; font-size: 14px; box-sizing: border-box; margin-top: 6px; }
+  .bookmarklet { display: inline-block; background: #6c5ce7; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-size: 16px; margin-top: 10px; cursor: grab; }
+  .bookmarklet:hover { background: #a29bfe; }
+  code { background: #222; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+  .note { color: #888; font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>🧠 Bookmarklet Second Cerveau</h1>
+<p>Capture n'importe quelle URL dans ton Second Cerveau en un clic depuis le navigateur.</p>
+
+<div class="step">
+  <h3>Étape 1 — Obtenir ton Chat ID</h3>
+  <p>Envoie <code>/monid</code> à ton bot Telegram.<br>
+  Il te répondra un numéro comme <code>123456789</code>.</p>
+</div>
+
+<div class="step">
+  <h3>Étape 2 — Remplis tes infos</h3>
+  <label>Token du bot Telegram :</label>
+  <input type="text" id="token" placeholder="8805665780:AAEH9uXLia..." />
+  <label style="margin-top:10px;display:block">Ton Chat ID :</label>
+  <input type="text" id="chatid" placeholder="123456789" />
+</div>
+
+<div class="step">
+  <h3>Étape 3 — Glisse ce bouton dans ta barre de favoris</h3>
+  <p>Affiche ta barre de favoris (<code>Ctrl+Shift+B</code>), puis glisse ce bouton dedans :</p>
+  <a class="bookmarklet" id="bookmarklet" href="#">📥 Second Cerveau</a>
+  <p class="note">⚠️ Le bouton se met à jour automatiquement quand tu remplis les champs ci-dessus.</p>
+</div>
+
+<div class="step">
+  <h3>Utilisation</h3>
+  <p>Sur n'importe quelle page web, clique sur le favori <strong>📥 Second Cerveau</strong>.<br>
+  La fiche apparaît dans ton Dropbox quelques secondes après.</p>
+</div>
+
+<script>
+function generer() {
+  const token = document.getElementById('token').value.trim();
+  const chatid = document.getElementById('chatid').value.trim();
+
+  if (!token || !chatid) {
+    document.getElementById('bookmarklet').href = 'javascript:alert("Remplis le token et le chat ID d\\u0027abord !")';
+    return;
+  }
+
+  const code = `(function(){
+    var url=location.href;
+    var titre=document.title;
+    var texte=url+(titre?' — '+titre:'');
+    fetch('https://api.telegram.org/bot${token}/sendMessage',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({chat_id:${chatid},text:texte})
+    }).then(function(r){return r.json()}).then(function(d){
+      if(d.ok){
+        var n=document.createElement('div');
+        n.style='position:fixed;top:20px;right:20px;background:#6c5ce7;color:#fff;padding:12px 20px;border-radius:8px;font-family:system-ui;font-size:14px;z-index:999999;box-shadow:0 4px 12px rgba(0,0,0,.3)';
+        n.textContent='✅ Envoyé au Second Cerveau !';
+        document.body.appendChild(n);
+        setTimeout(function(){n.remove()},3000);
+      } else {
+        alert('❌ Erreur : '+JSON.stringify(d));
+      }
+    }).catch(function(e){alert('❌ Erreur réseau : '+e)});
+  })()`;
+
+  document.getElementById('bookmarklet').href = 'javascript:' + encodeURIComponent(code);
+}
+
+document.getElementById('token').addEventListener('input', generer);
+document.getElementById('chatid').addEventListener('input', generer);
+generer();
+</script>
+</body>
+</html>
