@@ -59,15 +59,15 @@ def chemin_sans_collision(dossier: Path, nom: str) -> Path:
 
 
 def nouveau_nom_depuis_contenu(contenu: str) -> str:
+    titre = extraire_champ(contenu, "TITRE")
+    if titre:
+        return f"{slugifier(titre)}.md"
     idee = extraire_champ(contenu, "IDEE_PRINCIPALE")
-    tags_brut = extraire_champ(contenu, "TAGS")
     if idee:
-        texte_slug = idee.split(".")[0]
-    elif tags_brut:
-        match_tag = re.search(r"#([\w\-]+)", tags_brut)
-        texte_slug = match_tag.group(1) if match_tag else "note_sans_titre"
-    else:
-        texte_slug = "note_sans_titre"
+        return f"{slugifier(idee.split('.')[0])}.md"
+    tags_brut = extraire_champ(contenu, "TAGS")
+    match_tag = re.search(r"#([\w\-]+)", tags_brut) if tags_brut else None
+    texte_slug = match_tag.group(1) if match_tag else "note_sans_titre"
     return f"{slugifier(texte_slug)}.md"
 
 

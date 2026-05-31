@@ -33,6 +33,7 @@ EXTENSIONS_TEXTE = {".md", ".txt"}
 PROMPT_ANALYSE = """Analyse ce contenu et crée une fiche markdown avec EXACTEMENT ce format :
 
 ---
+**TITRE** : (5 à 7 mots maximum, résume précisément le sujet, comme un titre de livre)
 **SOURCE** : {source}
 **DATE** : {date}
 **TAGS** : #tag1 #tag2 #tag3 #tag4 #tag5
@@ -47,6 +48,12 @@ PROMPT_ANALYSE = """Analyse ce contenu et crée une fiche markdown avec EXACTEME
 **RESUME_30_SEC** : (résumé que je peux lire en 30 secondes maximum)
 **RESUME_COMPLET** : (analyse détaillée)
 ---
+
+Règles pour le TITRE :
+- 5 à 7 mots maximum
+- Doit résumer précisément le contenu (comme un titre de livre ou d'article)
+- Pas de ponctuation, pas de guillemets
+- Exemples : "React Server Components optimisation bundle", "Whisper transcription audio locale Python", "Transformer architecture attention mechanism"
 
 Contenu à analyser :
 {contenu}"""
@@ -211,9 +218,13 @@ def sauvegarder_fiche(fiche_md: str, fichier_original: str = None) -> Path:
     type_gemini = re.sub(r"[\[\]/|]", "", type_gemini).strip()  # nettoie les artefacts du prompt
     sous_dossier = re.sub(r"\s+", "_", type_gemini) if type_gemini else "Divers"
 
-    # Slug issu de l'IDEE_PRINCIPALE, avec fallback sur le premier tag
-    idee = extraire_champ(fiche_md, "IDEE_PRINCIPALE")
-    slug = slugifier(idee.split(".")[0]) if idee else slugifier(extraire_tag_principal(fiche_md))
+    # Slug issu du TITRE Gemini, fallback IDEE_PRINCIPALE, fallback premier tag
+    titre = extraire_champ(fiche_md, "TITRE")
+    if titre:
+        slug = slugifier(titre)
+    else:
+        idee = extraire_champ(fiche_md, "IDEE_PRINCIPALE")
+        slug = slugifier(idee.split(".")[0]) if idee else slugifier(extraire_tag_principal(fiche_md))
 
     nom_fichier = f"{slug}.md"
     dossier_cible = FICHES_DIR / sous_dossier
