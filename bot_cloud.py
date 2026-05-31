@@ -545,14 +545,30 @@ async def traiter_vocal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         buf = io.BytesIO()
         await fichier.download_to_memory(buf)
 
-        contenu = extraire_audio_tmp(buf.getvalue(), ".ogg")
-        fiche_md = analyser_contenu(contenu, "telegram-vocal")
-        path = uploader_fiche(fiche_md)
-        titre = extraire_champ(fiche_md, "TITRE") or "Message vocal"
-        await msg.edit_text(
-            f"✅ *Capturé !*\n\n*{titre}*\n\n`{path.split('/')[-1]}`",
-            parse_mode="Markdown",
-        )
+        transcription = extraire_audio_tmp(buf.getvalue(), ".ogg").strip()
+        premier_mot = transcription.split()[0].lower() if transcription else ""
+
+        # Routage selon le premier mot prononcé
+        if premier_mot in TRIGGERS_TRAVAIL:
+            contenu_note = transcription[len(premier_mot):].strip()
+            ajouter_travail(contenu_note)
+            await msg.edit_text(f"✅ *Tâche travail ajoutée :*\n`- {contenu_note}`", parse_mode="Markdown")
+
+        elif premier_mot in TRIGGERS_BLOCNOTES:
+            contenu_note = transcription[len(premier_mot):].strip()
+            ajouter_blocnote(contenu_note)
+            await msg.edit_text(f"✅ *Bloc-notes ajouté :*\n`- {contenu_note}`", parse_mode="Markdown")
+
+        else:
+            # Pas de préambule → fiche complète
+            fiche_md = analyser_contenu(transcription, "telegram-vocal")
+            path = uploader_fiche(fiche_md)
+            titre = extraire_champ(fiche_md, "TITRE") or "Message vocal"
+            await msg.edit_text(
+                f"✅ *Capturé !*\n\n*{titre}*\n\n`{path.split('/')[-1]}`",
+                parse_mode="Markdown",
+            )
+
     except Exception as e:
         log.exception("Erreur traitement vocal")
         await msg.edit_text(f"❌ {e}")
