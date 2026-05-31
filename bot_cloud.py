@@ -30,6 +30,7 @@ log = logging.getLogger(__name__)
 
 OPENAI_API_KEY     = os.environ["OPENAI_API_KEY"]
 TELEGRAM_TOKEN     = os.environ["TELEGRAM_BOT_TOKEN"]
+TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID")
 DROPBOX_TOKEN      = os.environ.get("DROPBOX_ACCESS_TOKEN")
 DROPBOX_APP_KEY    = os.environ.get("DROPBOX_APP_KEY")
 DROPBOX_APP_SECRET = os.environ.get("DROPBOX_APP_SECRET")
@@ -39,8 +40,10 @@ ENABLE_WHISPER     = os.environ.get("ENABLE_WHISPER", "false").lower() == "true"
 DROPBOX_FICHES    = "/second_cerveau/fiches"
 DROPBOX_RAW       = "/second_cerveau/raw"
 DROPBOX_BLOCNOTES = "/second_cerveau/blocnotes.md"
+DROPBOX_TRAVAIL   = "/second_cerveau/travail.md"
 
 TRIGGERS_BLOCNOTES = {"blocnote", "bloc-note", "blocnotes", "bloc-notes"}
+TRIGGERS_TRAVAIL   = {"travail"}
 
 PROMPT_ANALYSE = """Analyse ce contenu et crée une fiche markdown avec EXACTEMENT ce format :
 
@@ -249,6 +252,46 @@ def ajouter_blocnote(contenu: str) -> None:
     dbx.files_upload(nouveau_contenu, DROPBOX_BLOCNOTES, mode=dbx_module.files.WriteMode.overwrite)
 
 
+# ── Travail ───────────────────────────────────────────────────────────────────
+
+def ajouter_travail(contenu: str) -> None:
+    import dropbox as dbx_module
+    dbx = get_dropbox()
+    now = datetime.now().strftime("%d/%m/%Y %H:%M")
+    nouvelle_ligne = f"- {contenu} — {now}\n"
+    try:
+        _, res = dbx.files_download(DROPBOX_TRAVAIL)
+        texte_actuel = res.content.decode("utf-8")
+    except dbx_module.exceptions.ApiError:
+        texte_actuel = "# Travail\n\n"
+    nouveau_contenu = (texte_actuel + nouvelle_ligne).encode("utf-8")
+    dbx.files_upload(nouveau_contenu, DROPBOX_TRAVAIL, mode=dbx_module.files.WriteMode.overwrite)
+
+
+def lire_travail() -> str:
+    import dropbox as dbx_module
+    dbx = get_dropbox()
+    try:
+        _, res = dbx.files_download(DROPBOX_TRAVAIL)
+        lignes = res.content.decode("utf-8").splitlines()
+        taches = [l for l in lignes if l.startswith("- ")]
+        return "\n".join(taches) if taches else ""
+    except dbx_module.exceptions.ApiError:
+        return ""
+
+
+async def envoyer_recap_travail(context) -> None:
+    if not TELEGRAM_CHAT_ID:
+        log.warning("TELEGRAM_CHAT_ID non défini — recap travail ignoré.")
+        return
+    taches = lire_travail()
+    if taches:
+        texte = f"☀️ *Bon matin ! Tes tâches travail :*\n\n{taches}"
+    else:
+        texte = "☀️ *Bon matin !* Aucune tâche travail en attente."
+    await context.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=texte, parse_mode="Markdown")
+
+
 # ── Handlers Telegram ─────────────────────────────────────────────────────────
 
 async def cmd_monid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -307,8 +350,23 @@ async def cmd_dernieres(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def traiter_texte(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     texte = (update.message.text or "").strip()
 
-    # Détection bloc-notes : "blocnote ...", "bloc-notes ..."
     premier_mot = texte.split()[0].lower() if texte else ""
+
+    # Détection travail
+    if premier_mot in TRIGGERS_TRAVAIL:
+        contenu_note = texte[len(premier_mot):].strip()
+        if not contenu_note:
+            await update.message.reply_text("💼 Écris quelque chose après `travail` !")
+            return
+        msg = await update.message.reply_text("💼 Ajout aux tâches travail…")
+        try:
+            ajouter_travail(contenu_note)
+            await msg.edit_text(f"✅ Tâche ajoutée :\n`- {contenu_note}`", parse_mode="Markdown")
+        except Exception as e:
+            await msg.edit_text(f"❌ Erreur travail : {e}")
+        return
+
+    # Détection bloc-notes : "blocnote ...", "bloc-notes ..."
     if premier_mot in TRIGGERS_BLOCNOTES:
         contenu_note = texte[len(premier_mot):].strip()
         if not contenu_note:
@@ -434,6 +492,17 @@ def main() -> None:
     log.info("🤖 Bot Cloud démarré — Dropbox : %s", DROPBOX_FICHES)
 
     app = Application.builder().token(TELEGRAM_TOKEN).build()
+
+    # Job quotidien 8h (heure de Paris)
+    if TELEGRAM_CHAT_ID and app.job_queue:
+        import datetime as dt
+        from zoneinfo import ZoneInfo
+        paris = ZoneInfo("Europe/Paris")
+        app.job_queue.run_daily(
+            envoyer_recap_travail,
+            time=dt.time(8, 0, 0, tzinfo=paris),
+        )
+        log.info("⏰ Récap travail programmé à 8h (Paris)")
     app.add_handler(CommandHandler("monid", cmd_monid))
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
