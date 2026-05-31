@@ -592,11 +592,12 @@ def main() -> None:
         import datetime as dt
         from zoneinfo import ZoneInfo
         paris = ZoneInfo("Europe/Paris")
-        app.job_queue.run_daily(
-            envoyer_recap_matin,
-            time=dt.time(8, 0, 0, tzinfo=paris),
-        )
-        log.info("⏰ Récap matin programmé à 8h (Paris)")
+        for heure in [8, 12, 18, 22]:
+            app.job_queue.run_daily(
+                envoyer_recap_matin,
+                time=dt.time(heure, 0, 0, tzinfo=paris),
+            )
+        log.info("⏰ Récaps programmés à 8h, 12h, 18h, 22h (Paris)")
     app.add_handler(CommandHandler("done", cmd_done))
     app.add_handler(CommandHandler("monid", cmd_monid))
     app.add_handler(CommandHandler("start", cmd_start))
