@@ -268,31 +268,109 @@ def ajouter_travail(contenu: str) -> None:
     dbx.files_upload(nouveau_contenu, DROPBOX_TRAVAIL, mode=dbx_module.files.WriteMode.overwrite)
 
 
-def lire_travail() -> str:
+
+def lire_fichier_dropbox(path: str) -> str:
     import dropbox as dbx_module
     dbx = get_dropbox()
     try:
-        _, res = dbx.files_download(DROPBOX_TRAVAIL)
+        _, res = dbx.files_download(path)
         lignes = res.content.decode("utf-8").splitlines()
-        taches = [l for l in lignes if l.startswith("- ")]
-        return "\n".join(taches) if taches else ""
+        return "\n".join(l for l in lignes if l.startswith("- "))
     except dbx_module.exceptions.ApiError:
         return ""
 
 
-async def envoyer_recap_travail(context) -> None:
+def supprimer_taches(path: str, indices: set[int]) -> int:
+    """Supprime les tâches aux indices donnés (1-based). Retourne le nb supprimé."""
+    import dropbox as dbx_module
+    dbx = get_dropbox()
+    try:
+        _, res = dbx.files_download(path)
+        contenu = res.content.decode("utf-8")
+    except dbx_module.exceptions.ApiError:
+        return 0
+
+    toutes_lignes = contenu.splitlines(keepends=True)
+    taches = [(i, l) for i, l in enumerate(toutes_lignes) if l.strip().startswith("- ")]
+    a_supprimer = {taches[i - 1][0] for i in indices if 1 <= i <= len(taches)}
+    nouvelles_lignes = [l for i, l in enumerate(toutes_lignes) if i not in a_supprimer]
+    dbx.files_upload("".join(nouvelles_lignes).encode("utf-8"), path, mode=dbx_module.files.WriteMode.overwrite)
+    return len(a_supprimer)
+
+
+async def envoyer_recap_matin(context) -> None:
     if not TELEGRAM_CHAT_ID:
-        log.warning("TELEGRAM_CHAT_ID non défini — recap travail ignoré.")
+        log.warning("TELEGRAM_CHAT_ID non défini — recap ignoré.")
         return
-    taches = lire_travail()
-    if taches:
-        texte = f"☀️ *Bon matin ! Tes tâches travail :*\n\n{taches}"
-    else:
-        texte = "☀️ *Bon matin !* Aucune tâche travail en attente."
-    await context.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=texte, parse_mode="Markdown")
+
+    travail   = lire_fichier_dropbox(DROPBOX_TRAVAIL)
+    blocnotes = lire_fichier_dropbox(DROPBOX_BLOCNOTES)
+
+    parties = ["☀️ *Bon matin !*\n"]
+    if travail:
+        parties.append(f"💼 *Travail :*\n{travail}")
+    if blocnotes:
+        parties.append(f"📝 *Bloc-notes :*\n{blocnotes}")
+    if not travail and not blocnotes:
+        parties.append("Aucune tâche en attente. Belle journée !")
+
+    await context.bot.send_message(
+        chat_id=TELEGRAM_CHAT_ID,
+        text="\n\n".join(parties),
+        parse_mode="Markdown",
+    )
 
 
 # ── Handlers Telegram ─────────────────────────────────────────────────────────
+
+async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    args = context.args  # ex: ["T1", "T3", "B2"]
+
+    # Sans argument → afficher la liste numérotée
+    if not args:
+        travail   = lire_fichier_dropbox(DROPBOX_TRAVAIL).splitlines()
+        blocnotes = lire_fichier_dropbox(DROPBOX_BLOCNOTES).splitlines()
+        lignes = []
+        if travail:
+            lignes.append("💼 *Travail :*")
+            for i, t in enumerate(travail, 1):
+                lignes.append(f"  T{i} {t}")
+        if blocnotes:
+            lignes.append("\n📝 *Bloc-notes :*")
+            for i, b in enumerate(blocnotes, 1):
+                lignes.append(f"  B{i} {b}")
+        if not lignes:
+            await update.message.reply_text("✅ Aucune tâche en attente !")
+            return
+        lignes.append("\n_Réponds_ `/done T1 B2` _pour cocher des tâches_")
+        await update.message.reply_text("\n".join(lignes), parse_mode="Markdown")
+        return
+
+    # Avec arguments → supprimer les tâches cochées
+    t_indices = set()
+    b_indices = set()
+    for arg in args:
+        arg = arg.upper()
+        try:
+            if arg.startswith("T"):
+                t_indices.add(int(arg[1:]))
+            elif arg.startswith("B"):
+                b_indices.add(int(arg[1:]))
+        except ValueError:
+            pass
+
+    if not t_indices and not b_indices:
+        await update.message.reply_text("❓ Format : `/done T1 T3 B2`", parse_mode="Markdown")
+        return
+
+    msg = await update.message.reply_text("⏳ Mise à jour…")
+    total = 0
+    if t_indices:
+        total += supprimer_taches(DROPBOX_TRAVAIL, t_indices)
+    if b_indices:
+        total += supprimer_taches(DROPBOX_BLOCNOTES, b_indices)
+    await msg.edit_text(f"✅ {total} tâche(s) cochée(s) comme faite(s) !")
+
 
 async def cmd_monid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
@@ -499,10 +577,11 @@ def main() -> None:
         from zoneinfo import ZoneInfo
         paris = ZoneInfo("Europe/Paris")
         app.job_queue.run_daily(
-            envoyer_recap_travail,
+            envoyer_recap_matin,
             time=dt.time(8, 0, 0, tzinfo=paris),
         )
-        log.info("⏰ Récap travail programmé à 8h (Paris)")
+        log.info("⏰ Récap matin programmé à 8h (Paris)")
+    app.add_handler(CommandHandler("done", cmd_done))
     app.add_handler(CommandHandler("monid", cmd_monid))
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
