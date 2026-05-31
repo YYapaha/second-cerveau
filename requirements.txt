@@ -1,0 +1,11 @@
+# Obligatoires
+google-generativeai>=0.8.0
+requests>=2.31.0
+trafilatura>=1.12.0
+
+# Optionnels (décommenter selon besoin)
+# PyMuPDF>=1.24.0        # Extraction PDF
+# Pillow>=10.0.0         # Manipulation images
+# openai-whisper>=20231117  # Transcription audio (local)
+# watchdog>=4.0.0        # Surveillance dossier inbox
+# python-telegram-bot>=21.0  # Bot Telegram
