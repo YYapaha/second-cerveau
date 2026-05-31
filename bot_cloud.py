@@ -202,19 +202,19 @@ def extraire_pdf_bytes(data: bytes) -> str:
 
 
 def extraire_audio_tmp(data: bytes, extension: str = ".ogg") -> str:
-    if not ENABLE_WHISPER:
-        raise RuntimeError(
-            "Transcription audio désactivée sur Railway (ENABLE_WHISPER=false). "
-            "Active-la via la variable d'environnement si ton plan le permet."
-        )
-    import whisper
+    from openai import OpenAI
+    client = OpenAI(api_key=OPENAI_API_KEY)
     with tempfile.NamedTemporaryFile(suffix=extension, delete=False) as tmp:
         tmp.write(data)
         tmp_path = tmp.name
     try:
-        model = whisper.load_model("tiny")
-        result = model.transcribe(tmp_path)
-        return result["text"][:20000]
+        with open(tmp_path, "rb") as f:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f,
+                language="fr",
+            )
+        return transcript.text[:20000]
     finally:
         os.unlink(tmp_path)
 
