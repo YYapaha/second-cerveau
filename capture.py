@@ -22,8 +22,8 @@ for _pkg in _FFMPEG_WINGET.glob("Gyan.FFmpeg_*/*/bin"):
         break
 
 BASE_DIR = Path(__file__).parent
-FICHES_DIR = BASE_DIR / "fiches"
-RAW_DIR = BASE_DIR / "raw"
+FICHES_DIR = Path(os.environ["FICHES_DIR"]) if os.environ.get("FICHES_DIR") else BASE_DIR / "fiches"
+RAW_DIR = Path(os.environ["RAW_DIR"]) if os.environ.get("RAW_DIR") else BASE_DIR / "raw"
 
 EXTENSIONS_PDF = {".pdf"}
 EXTENSIONS_IMAGE = {".png", ".jpg", ".jpeg", ".webp"}
