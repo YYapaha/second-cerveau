@@ -5,8 +5,8 @@ import logging
 from pathlib import Path
 from datetime import datetime
 
-# Force UTF-8 sur Windows
-if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+# Force UTF-8 sur Windows (complément au flag -X utf8 passé par start.bat)
+if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from dotenv import load_dotenv
