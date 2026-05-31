@@ -6,6 +6,10 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
+# Force UTF-8 sur Windows pour les emojis dans le terminal
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env")
@@ -102,19 +106,20 @@ def extraire_pdf(chemin: str) -> str:
 
 def extraire_image(chemin: str) -> str:
     print("⏳ Analyse de l'image par Gemini Vision...")
-    import google.generativeai as genai
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    img = Path(chemin)
-    with open(img, "rb") as f:
-        data = f.read()
-    import PIL.Image
-    import io
-    image = PIL.Image.open(io.BytesIO(data))
-    response = model.generate_content([
-        "Décris cette image en détail. Si elle contient du texte, retranscris-le intégralement. Si c'est un graphique, explique les données.",
-        image,
-    ])
+    try:
+        import PIL.Image
+    except ImportError:
+        raise ImportError("❌ Pillow non installé. Décommentez 'Pillow' dans requirements.txt et relancez pip install.")
+    from google import genai
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    image = PIL.Image.open(chemin)
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[
+            "Décris cette image en détail. Si elle contient du texte, retranscris-le intégralement. Si c'est un graphique, explique les données.",
+            image,
+        ],
+    )
     print("✅ Image analysée")
     return response.text
 
@@ -152,20 +157,19 @@ def recuperer_contenu(entree: str, type_entree: str) -> str:
 
 
 def analyser_contenu(contenu: str, source: str) -> str:
-    import google.generativeai as genai
+    from google import genai
     print("🧠 Analyse par l'IA en cours...")
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key or api_key == "colle_ta_cle_ici":
         raise ValueError("❌ Clé API Gemini manquante. Renseignez GEMINI_API_KEY dans le fichier .env")
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    client = genai.Client(api_key=api_key)
     prompt = PROMPT_ANALYSE.format(
         source=source,
         date=datetime.now().strftime("%Y-%m-%d"),
         contenu=contenu,
     )
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
         return response.text
     except Exception as e:
         raise RuntimeError(f"❌ L'API Gemini est momentanément indisponible. Réessayez dans quelques minutes. ({e})")
