@@ -36,8 +36,11 @@ DROPBOX_APP_SECRET = os.environ.get("DROPBOX_APP_SECRET")
 DROPBOX_REFRESH    = os.environ.get("DROPBOX_REFRESH_TOKEN")
 ENABLE_WHISPER     = os.environ.get("ENABLE_WHISPER", "false").lower() == "true"
 
-DROPBOX_FICHES = "/second_cerveau/fiches"
-DROPBOX_RAW    = "/second_cerveau/raw"
+DROPBOX_FICHES    = "/second_cerveau/fiches"
+DROPBOX_RAW       = "/second_cerveau/raw"
+DROPBOX_BLOCNOTES = "/second_cerveau/blocnotes.md"
+
+TRIGGERS_BLOCNOTES = {"blocnote", "bloc-note", "blocnotes", "bloc-notes"}
 
 PROMPT_ANALYSE = """Analyse ce contenu et crée une fiche markdown avec EXACTEMENT ce format :
 
@@ -227,6 +230,25 @@ def analyser_contenu(contenu: str, source: str) -> str:
     )
     return response.choices[0].message.content
 
+# ── Bloc-notes ───────────────────────────────────────────────────────────────
+
+def ajouter_blocnote(contenu: str) -> None:
+    import dropbox as dbx_module
+    dbx = get_dropbox()
+    now = datetime.now().strftime("%d/%m/%Y %H:%M")
+    nouvelle_ligne = f"- {contenu} — {now}\n"
+
+    # Télécharger le fichier existant ou partir d'un fichier vide
+    try:
+        _, res = dbx.files_download(DROPBOX_BLOCNOTES)
+        texte_actuel = res.content.decode("utf-8")
+    except dbx_module.exceptions.ApiError:
+        texte_actuel = "# Bloc-notes\n\n"
+
+    nouveau_contenu = (texte_actuel + nouvelle_ligne).encode("utf-8")
+    dbx.files_upload(nouveau_contenu, DROPBOX_BLOCNOTES, mode=dbx_module.files.WriteMode.overwrite)
+
+
 # ── Handlers Telegram ─────────────────────────────────────────────────────────
 
 async def cmd_monid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -283,9 +305,25 @@ async def cmd_dernieres(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def traiter_texte(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    texte = (update.message.text or "").strip()
+
+    # Détection bloc-notes : "blocnote ...", "bloc-notes ..."
+    premier_mot = texte.split()[0].lower() if texte else ""
+    if premier_mot in TRIGGERS_BLOCNOTES:
+        contenu_note = texte[len(premier_mot):].strip()
+        if not contenu_note:
+            await update.message.reply_text("📝 Écris quelque chose après `blocnote` !")
+            return
+        msg = await update.message.reply_text("📝 Ajout au bloc-notes…")
+        try:
+            ajouter_blocnote(contenu_note)
+            await msg.edit_text(f"✅ Ajouté au bloc-notes :\n`- {contenu_note}`", parse_mode="Markdown")
+        except Exception as e:
+            await msg.edit_text(f"❌ Erreur bloc-notes : {e}")
+        return
+
     msg = await update.message.reply_text("⏳ Traitement en cours…")
     try:
-        texte = (update.message.text or "").strip()
         if texte.startswith("http://") or texte.startswith("https://"):
             contenu = extraire_url(texte)
             source = texte
