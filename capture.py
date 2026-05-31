@@ -119,23 +119,24 @@ def extraire_pdf(chemin: str) -> str:
 
 
 def extraire_image(chemin: str) -> str:
-    print("⏳ Analyse de l'image par Gemini Vision...")
-    try:
-        import PIL.Image
-    except ImportError:
-        raise ImportError("❌ Pillow non installé. Décommentez 'Pillow' dans requirements.txt et relancez pip install.")
-    from google import genai
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    image = PIL.Image.open(chemin)
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[
-            "Décris cette image en détail. Si elle contient du texte, retranscris-le intégralement. Si c'est un graphique, explique les données.",
-            image,
-        ],
+    import base64
+    from openai import OpenAI
+    print("⏳ Analyse de l'image par GPT-4o Vision...")
+    ext = Path(chemin).suffix.lower().lstrip(".")
+    if ext == "jpg":
+        ext = "jpeg"
+    with open(chemin, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode()
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": "Décris cette image en détail. Si elle contient du texte, retranscris-le intégralement. Si c'est un graphique, explique les données."},
+            {"type": "image_url", "image_url": {"url": f"data:image/{ext};base64,{b64}"}},
+        ]}],
     )
     print("✅ Image analysée")
-    return response.text
+    return response.choices[0].message.content
 
 
 def extraire_audio(chemin: str) -> str:
@@ -171,22 +172,25 @@ def recuperer_contenu(entree: str, type_entree: str) -> str:
 
 
 def analyser_contenu(contenu: str, source: str) -> str:
-    from google import genai
+    from openai import OpenAI
     print("🧠 Analyse par l'IA en cours...")
-    api_key = os.environ.get("GEMINI_API_KEY", "")
+    api_key = os.environ.get("OPENAI_API_KEY", "")
     if not api_key or api_key == "colle_ta_cle_ici":
-        raise ValueError("❌ Clé API Gemini manquante. Renseignez GEMINI_API_KEY dans le fichier .env")
-    client = genai.Client(api_key=api_key)
+        raise ValueError("❌ Clé API OpenAI manquante. Renseignez OPENAI_API_KEY dans le fichier .env")
+    client = OpenAI(api_key=api_key)
     prompt = PROMPT_ANALYSE.format(
         source=source,
         date=datetime.now().strftime("%Y-%m-%d"),
         contenu=contenu,
     )
     try:
-        response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-        return response.text
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.choices[0].message.content
     except Exception as e:
-        raise RuntimeError(f"❌ L'API Gemini est momentanément indisponible. Réessayez dans quelques minutes. ({e})")
+        raise RuntimeError(f"❌ L'API OpenAI est momentanément indisponible. Réessayez dans quelques minutes. ({e})")
 
 
 def extraire_tag_principal(fiche_md: str) -> str:

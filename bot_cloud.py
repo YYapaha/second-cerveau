@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-GEMINI_API_KEY     = os.environ["GEMINI_API_KEY"]
+OPENAI_API_KEY     = os.environ["OPENAI_API_KEY"]
 TELEGRAM_TOKEN     = os.environ["TELEGRAM_BOT_TOKEN"]
 DROPBOX_TOKEN      = os.environ.get("DROPBOX_ACCESS_TOKEN")
 DROPBOX_APP_KEY    = os.environ.get("DROPBOX_APP_KEY")
@@ -173,20 +173,19 @@ def extraire_url(url: str) -> str:
     raise ValueError("Impossible d'extraire le contenu de cette URL.")
 
 
-def extraire_image_bytes(data: bytes) -> str:
-    from google import genai
-    import PIL.Image
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    image = PIL.Image.open(io.BytesIO(data))
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[
-            "Décris cette image en détail. Si elle contient du texte, retranscris-le. "
-            "Si c'est un graphique, explique les données.",
-            image,
-        ],
+def extraire_image_bytes(data: bytes, mime: str = "image/jpeg") -> str:
+    import base64
+    from openai import OpenAI
+    b64 = base64.b64encode(data).decode()
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": "Décris cette image en détail. Si elle contient du texte, retranscris-le. Si c'est un graphique, explique les données."},
+            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+        ]}],
     )
-    return response.text
+    return response.choices[0].message.content
 
 
 def extraire_pdf_bytes(data: bytes) -> str:
@@ -215,15 +214,18 @@ def extraire_audio_tmp(data: bytes, extension: str = ".ogg") -> str:
 
 
 def analyser_contenu(contenu: str, source: str) -> str:
-    from google import genai
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    from openai import OpenAI
+    client = OpenAI(api_key=OPENAI_API_KEY)
     prompt = PROMPT_ANALYSE.format(
         source=source,
         date=datetime.now().strftime("%Y-%m-%d"),
         contenu=contenu,
     )
-    response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-    return response.text
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return response.choices[0].message.content
 
 # ── Handlers Telegram ─────────────────────────────────────────────────────────
 
@@ -377,8 +379,8 @@ async def traiter_vocal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 def main() -> None:
     if not TELEGRAM_TOKEN:
         sys.exit("TELEGRAM_BOT_TOKEN manquant.")
-    if not GEMINI_API_KEY:
-        sys.exit("GEMINI_API_KEY manquante.")
+    if not OPENAI_API_KEY:
+        sys.exit("OPENAI_API_KEY manquante.")
     if not (DROPBOX_TOKEN or (DROPBOX_APP_KEY and DROPBOX_APP_SECRET and DROPBOX_REFRESH)):
         sys.exit("Token Dropbox manquant (DROPBOX_ACCESS_TOKEN ou APP_KEY+APP_SECRET+REFRESH_TOKEN).")
 

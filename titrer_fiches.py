@@ -1,5 +1,5 @@
 """
-Script one-shot : ajoute un TITRE Gemini aux fiches qui n'en ont pas, puis renomme.
+Script one-shot : ajoute un TITRE OpenAI aux fiches qui n'en ont pas, puis renomme.
 """
 import os
 import sys
@@ -14,12 +14,12 @@ if hasattr(sys.stdout, "reconfigure"):
 
 load_dotenv(Path(__file__).parent / ".env")
 
-from google import genai
+from openai import OpenAI
 
 BASE_DIR = Path(__file__).parent
 FICHES_DIR = BASE_DIR / "fiches"
 
-client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 
 def extraire_champ(contenu: str, champ: str) -> str:
@@ -47,14 +47,15 @@ def generer_titre(idee: str, resume: str) -> str:
     )
     for tentative in range(4):
         try:
-            response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-            return response.text.strip().strip('"').strip("'")
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return response.choices[0].message.content.strip().strip('"').strip("'")
         except Exception as e:
             msg = str(e)
-            # Extraire le délai suggéré par l'API (ex: "retryDelay: '36s'")
-            match = re.search(r"retry[^']*'(\d+)s'", msg, re.IGNORECASE)
-            attente = int(match.group(1)) + 2 if match else 15 * (tentative + 1)
-            if tentative < 3:
+            attente = 15 * (tentative + 1)
+            if "rate_limit" in msg.lower() and tentative < 3:
                 print(f"     ⏳ Rate limit — attente {attente}s avant retry...")
                 time.sleep(attente)
             else:
