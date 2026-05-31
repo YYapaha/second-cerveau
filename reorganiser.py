@@ -4,7 +4,6 @@ import shutil
 import unicodedata
 import logging
 from pathlib import Path
-from datetime import datetime
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -45,14 +44,7 @@ def type_vers_dossier(type_gemini: str) -> str:
     return dossier or "Divers"
 
 
-def extraire_horodatage(nom_fichier: str) -> str:
-    """Extrait YYYY-MM-DD_HHMMSS du nom de fichier existant, ou génère un nouveau."""
-    match = re.match(r"(\d{4}-\d{2}-\d{2}_\d{6})", nom_fichier)
-    return match.group(1) if match else datetime.now().strftime("%Y-%m-%d_%H%M%S")
-
-
 def chemin_sans_collision(dossier: Path, nom: str) -> Path:
-    """Retourne un chemin libre en ajoutant un suffixe _2, _3... si nécessaire."""
     cible = dossier / nom
     if not cible.exists():
         return cible
@@ -66,61 +58,77 @@ def chemin_sans_collision(dossier: Path, nom: str) -> Path:
         compteur += 1
 
 
+def nouveau_nom_depuis_contenu(contenu: str) -> str:
+    idee = extraire_champ(contenu, "IDEE_PRINCIPALE")
+    tags_brut = extraire_champ(contenu, "TAGS")
+    if idee:
+        texte_slug = idee.split(".")[0]
+    elif tags_brut:
+        match_tag = re.search(r"#([\w\-]+)", tags_brut)
+        texte_slug = match_tag.group(1) if match_tag else "note_sans_titre"
+    else:
+        texte_slug = "note_sans_titre"
+    return f"{slugifier(texte_slug)}.md"
+
+
 def reorganiser():
     if not FICHES_DIR.exists():
         log.error("Dossier fiches/ introuvable : %s", FICHES_DIR)
         sys.exit(1)
 
-    # Uniquement les .md à la racine de fiches/ (pas les sous-dossiers)
-    fiches = [f for f in FICHES_DIR.iterdir() if f.is_file() and f.suffix == ".md"]
+    # Fiches à la racine → déplacer + renommer
+    fiches_racine = [f for f in FICHES_DIR.iterdir() if f.is_file() and f.suffix == ".md"]
 
-    if not fiches:
-        log.info("Aucune fiche à la racine de fiches/ — rien à faire.")
+    # Fiches déjà dans des sous-dossiers → renommer uniquement
+    fiches_sous_dossiers = [
+        f for f in FICHES_DIR.rglob("*.md")
+        if f.parent != FICHES_DIR and f.is_file()
+    ]
+
+    total = len(fiches_racine) + len(fiches_sous_dossiers)
+    if total == 0:
+        log.info("Aucune fiche trouvée — rien à faire.")
         return
 
-    log.info("=== Début réorganisation — %d fiche(s) trouvée(s) ===", len(fiches))
-    deplacees = 0
+    log.info("=== Début réorganisation — %d fiche(s) ===", total)
+    traitees = 0
     erreurs = 0
 
-    for fiche in sorted(fiches):
+    # --- Fiches racine : déplacer dans sous-dossier + renommer ---
+    for fiche in sorted(fiches_racine):
         try:
             contenu = fiche.read_text(encoding="utf-8", errors="ignore")
-
             type_brut = extraire_champ(contenu, "TYPE")
-            idee = extraire_champ(contenu, "IDEE_PRINCIPALE")
-            tags_brut = extraire_champ(contenu, "TAGS")
-
-            # Sous-dossier
             dossier_nom = type_vers_dossier(type_brut) if type_brut else "Divers"
-
-            # Slug depuis l'idée principale (première phrase), fallback premier tag
-            if idee:
-                texte_slug = idee.split(".")[0]
-            elif tags_brut:
-                match_tag = re.search(r"#([\w\-]+)", tags_brut)
-                texte_slug = match_tag.group(1) if match_tag else "note_sans_titre"
-            else:
-                texte_slug = "note_sans_titre"
-
-            slug = slugifier(texte_slug)
-            horodatage = extraire_horodatage(fiche.name)
-            nouveau_nom = f"{horodatage}_{slug}.md"
-
+            nouveau_nom = nouveau_nom_depuis_contenu(contenu)
             dossier_cible = FICHES_DIR / dossier_nom
             dossier_cible.mkdir(parents=True, exist_ok=True)
-
             chemin_cible = chemin_sans_collision(dossier_cible, nouveau_nom)
             shutil.move(str(fiche), chemin_cible)
-
-            log.info("DEPLACE  %s  →  %s/%s", fiche.name, dossier_nom, chemin_cible.name)
-            deplacees += 1
-
+            log.info("DEPLACE+RENOMME  %s  →  %s/%s", fiche.name, dossier_nom, chemin_cible.name)
+            traitees += 1
         except Exception as e:
-            log.error("ERREUR   %s  :  %s", fiche.name, e)
+            log.error("ERREUR  %s  :  %s", fiche.name, e)
             erreurs += 1
 
-    log.info("=== Fin réorganisation — %d déplacée(s), %d erreur(s) ===", deplacees, erreurs)
-    print(f"\n✅ {deplacees} fiche(s) réorganisée(s). Log : {LOG_FILE}")
+    # --- Fiches dans sous-dossiers : renommer uniquement ---
+    for fiche in sorted(fiches_sous_dossiers):
+        try:
+            contenu = fiche.read_text(encoding="utf-8", errors="ignore")
+            nouveau_nom = nouveau_nom_depuis_contenu(contenu)
+            chemin_cible = chemin_sans_collision(fiche.parent, nouveau_nom)
+            if chemin_cible == fiche:
+                log.info("INCHANGE  %s", fiche.name)
+                continue
+            fiche.rename(chemin_cible)
+            log.info("RENOMME  %s  →  %s", fiche.name, chemin_cible.name)
+            traitees += 1
+        except Exception as e:
+            log.error("ERREUR  %s  :  %s", fiche.name, e)
+            erreurs += 1
+
+    log.info("=== Fin — %d traitée(s), %d erreur(s) ===", traitees, erreurs)
+    print(f"\n✅ {traitees} fiche(s) traitée(s). Log : {LOG_FILE}")
     if erreurs:
         print(f"⚠️  {erreurs} erreur(s) — consulter {LOG_FILE}")
 

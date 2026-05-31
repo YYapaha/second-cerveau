@@ -215,8 +215,7 @@ def sauvegarder_fiche(fiche_md: str, fichier_original: str = None) -> Path:
     idee = extraire_champ(fiche_md, "IDEE_PRINCIPALE")
     slug = slugifier(idee.split(".")[0]) if idee else slugifier(extraire_tag_principal(fiche_md))
 
-    horodatage = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    nom_fichier = f"{horodatage}_{slug}.md"
+    nom_fichier = f"{slug}.md"
     dossier_cible = FICHES_DIR / sous_dossier
     dossier_cible.mkdir(parents=True, exist_ok=True)
     chemin_fiche = dossier_cible / nom_fichier
