@@ -9,4 +9,4 @@ python-dotenv>=1.2.1
 # Pillow>=12.2.0             # Manipulation images
 # openai-whisper>=20250625   # Transcription audio (local)
 # watchdog>=6.0.0            # Surveillance dossier inbox
-# python-telegram-bot>=22.7  # Bot Telegram
+python-telegram-bot>=22.7  # Bot Telegram
