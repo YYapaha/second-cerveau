@@ -2,6 +2,7 @@
 google-generativeai>=0.8.6   # SDK legacy (stable). Nouvelle SDK : google-genai>=2.7.0
 requests>=2.34.2
 trafilatura>=2.0.0
+python-dotenv>=1.2.1
 
 # Optionnels (décommenter selon besoin)
 # PyMuPDF>=1.27.0            # Extraction PDF
