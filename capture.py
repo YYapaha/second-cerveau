@@ -189,12 +189,37 @@ def extraire_tag_principal(fiche_md: str) -> str:
     return "divers"
 
 
+def extraire_champ(fiche_md: str, champ: str) -> str:
+    match = re.search(rf"\*\*{champ}\*\*\s*:\s*(.+?)(?=\n\*\*|\Z)", fiche_md, re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+def slugifier(texte: str, max_len: int = 50) -> str:
+    import unicodedata
+    texte = unicodedata.normalize("NFKD", texte)
+    texte = texte.encode("ascii", "ignore").decode("ascii")
+    texte = texte.lower()
+    texte = re.sub(r"[^\w\s-]", "", texte)
+    texte = re.sub(r"[\s\-]+", "_", texte)
+    texte = texte.strip("_")
+    return texte[:max_len].rstrip("_") or "note"
+
+
 def sauvegarder_fiche(fiche_md: str, fichier_original: str = None) -> Path:
-    tag = extraire_tag_principal(fiche_md)
+    # Sous-dossier basé sur le TYPE Gemini
+    type_gemini = extraire_champ(fiche_md, "TYPE")
+    type_gemini = re.sub(r"[\[\]/|]", "", type_gemini).strip()  # nettoie les artefacts du prompt
+    sous_dossier = re.sub(r"\s+", "_", type_gemini) if type_gemini else "Divers"
+
+    # Slug issu de l'IDEE_PRINCIPALE, avec fallback sur le premier tag
+    idee = extraire_champ(fiche_md, "IDEE_PRINCIPALE")
+    slug = slugifier(idee.split(".")[0]) if idee else slugifier(extraire_tag_principal(fiche_md))
+
     horodatage = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    nom_fichier = f"{horodatage}_{tag}.md"
-    chemin_fiche = FICHES_DIR / nom_fichier
-    FICHES_DIR.mkdir(exist_ok=True)
+    nom_fichier = f"{horodatage}_{slug}.md"
+    dossier_cible = FICHES_DIR / sous_dossier
+    dossier_cible.mkdir(parents=True, exist_ok=True)
+    chemin_fiche = dossier_cible / nom_fichier
     with open(chemin_fiche, "w", encoding="utf-8") as f:
         f.write(fiche_md)
     if fichier_original:
