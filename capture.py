@@ -14,6 +14,13 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env")
 
+# Ajoute le bin ffmpeg de winget au PATH si présent et pas encore dedans
+_FFMPEG_WINGET = Path.home() / "AppData/Local/Microsoft/WinGet/Packages"
+for _pkg in _FFMPEG_WINGET.glob("Gyan.FFmpeg_*/*/bin"):
+    if str(_pkg) not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = str(_pkg) + os.pathsep + os.environ.get("PATH", "")
+        break
+
 BASE_DIR = Path(__file__).parent
 FICHES_DIR = BASE_DIR / "fiches"
 RAW_DIR = BASE_DIR / "raw"
