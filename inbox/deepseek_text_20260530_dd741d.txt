@@ -1,0 +1,54 @@
+Tu es un expert React Native / Expo. Le projet Flowmate (https://github.com/YYapaha/flowmate) a récemment ajouté une fonctionnalité de **tiroirs** (drawers) pour organiser les pensées par catégories (Travail, Idées, etc.). Cependant, plusieurs problèmes subsistent :
+
+## Problèmes identifiés
+
+1. **Affichage du tiroir quand il est ouvert** – la partie inférieure est “moche” (probablement mal dimensionnée, pas de scroll ou découpe visuelle).  
+2. **Impossible de modifier une pensée une fois qu’elle est dans un tiroir** – aucune icône “Modifier” (crayon) ni action d’édition.  
+3. **Bouton “Développer” inutile** – sur certains écrans (par exemple Archives ou Calendrier), ce bouton ne fait rien ou n’est pas pertinent. L’utilisateur souhaite pouvoir **modifier** la pensée (texte, tag, date, etc.) à la place, et ce, depuis tous les écrans (Accueil, Archives, Calendrier, Tiroirs, etc.).
+
+## Corrections attendues
+
+### 1. Finaliser l’interface du tiroir ouvert
+- Fichier concerné : `src/components/DrawerCard.jsx` ou `src/screens/DrawerScreen.jsx` (selon ton implémentation).
+- Ajouter une hauteur maximale (ex: `maxHeight: '80%'`) et activer le défilement (`scrollEnabled`) pour que le contenu du tiroir ne dépasse pas.
+- Vérifier les coins arrondis (borderRadius) en bas du tiroir.
+- Si le tiroir utilise `Modal` ou `BottomSheet`, s’assurer que l’ombre et le fond sont cohérents avec le design system.
+
+### 2. Ajouter la fonction “Modifier” pour toutes les pensées
+- Créer une modale réutilisable `EditThoughtModal.jsx` permettant de modifier :
+  - Texte de la pensée (`TextInput` multiligne)
+  - Tag (sélecteur parmi la liste existante)
+  - Date et heure (si rappel, via `DateTimePicker`)
+  - (Optionnel) le tiroir d’appartenance.
+- Dans `ThoughtContext.jsx`, ajouter une fonction `updateThought(id, updates)` qui fusionne les nouvelles valeurs.
+- Ajouter une icône “crayon” (ou remplacer le menu “Développer” par “Modifier”) dans :
+  - `Card.jsx` (sur l’écran d’accueil)
+  - `ReminderCard.jsx` (dans le calendrier)
+  - `ArchiveCard` (dans l’écran Archives)
+  - La carte à l’intérieur du tiroir (DrawerCard).
+- L’icône doit ouvrir `EditThoughtModal` avec les données pré‑remplies.
+
+### 3. Supprimer ou remplacer le bouton “Développer”
+- Dans tous les écrans où le bouton “Développer” est présent et non fonctionnel, le remplacer par “Modifier”.
+- Si “Développer” sert à afficher le texte complet (au lieu de 3 lignes), le garder uniquement sur l’accueil, mais remplacer l’icône kebab (trois points) par un menu plus clair : “Modifier”, “Archiver”, “Supprimer”. L’utilisateur préfère la modification directe.
+
+### 4. Adapter le style et la responsivité
+- Toutes les nouvelles modales doivent respecter le design system (couleurs, typographie, coins arrondis).
+- Sur petit écran, la modale doit prendre presque toute la largeur ; sur grand écran, maxWidth 500px.
+- Ajouter `hitSlop` sur l’icône “Modifier” pour faciliter le tap.
+
+## Fichiers à modifier ou créer
+- `src/components/EditThoughtModal.jsx` (nouveau)
+- `src/context/ThoughtContext.jsx` (ajouter `updateThought`)
+- `src/components/Card.jsx` (remplacer “Développer” par “Modifier” ou ajouter l’icône)
+- `src/screens/ArchiveScreen.jsx` (idem)
+- `src/screens/CalendarScreen.jsx` (idem pour les cartes de rappel)
+- `src/components/DrawerCard.jsx` (idem)
+- `src/screens/DrawerScreen.jsx` (corriger l’affichage du tiroir ouvert)
+
+## Contraintes
+- Les chaînes de caractères sont en français, neutres.
+- Les animations doivent rester fluides (utiliser `Reanimated` si besoin).
+- Les modifications doivent être sauvegardées immédiatement dans AsyncStorage.
+
+Génère le code complet pour ces corrections.

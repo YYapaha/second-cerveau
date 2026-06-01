@@ -1,0 +1,23 @@
+2026-05-31 19:35:06,209  INFO  === Début réorganisation — 9 fiche(s) trouvée(s) ===
+2026-05-31 19:35:06,210  INFO  DEPLACE  2026-05-31_185332_IntelligenceArtificielle.md  →  Note/2026-05-31_185332_lintelligence_artificielle_ia_est_un_vaste_domaine.md
+2026-05-31 19:35:06,211  INFO  DEPLACE  2026-05-31_185448_IntelligenceArtificielle.md  →  Recherche/2026-05-31_185448_lintelligence_artificielle_ia_est_la_science_et_li.md
+2026-05-31 19:35:06,212  INFO  DEPLACE  2026-05-31_190125_Bots.md  →  Note/2026-05-31_190125_les_bots_sont_des_programmes_informatiques_concus.md
+2026-05-31 19:35:06,213  INFO  DEPLACE  2026-05-31_190434_ReactNative.md  →  Note/2026-05-31_190434_ce_document_analyse_les_problemes_rencontres_avec.md
+2026-05-31 19:35:06,214  INFO  DEPLACE  2026-05-31_192226_étiquetteproduit.md  →  Image/2026-05-31_192226_limage_presente_une_etiquette_de_produit_ikea_typi.md
+2026-05-31 19:35:06,215  INFO  DEPLACE  2026-05-31_192402_React.md  →  Note/2026-05-31_192402_lidee_principale_de_cette_note_est_de_servir_de_ra.md
+2026-05-31 19:35:06,216  INFO  DEPLACE  2026-05-31_192506_Python.md  →  Note/2026-05-31_192506_le_message_est_une_note_personnelle_ou_le_locuteur.md
+2026-05-31 19:35:06,216  INFO  DEPLACE  2026-05-31_192904_IA.md  →  Outil/2026-05-31_192904_la_conversation_met_en_lumiere_deux_outils_rtk_et.md
+2026-05-31 19:35:06,217  INFO  DEPLACE  index.md.md  →  Divers/2026-05-31_193506_note_sans_titre.md
+2026-05-31 19:35:06,217  INFO  === Fin réorganisation — 9 déplacée(s), 0 erreur(s) ===
+2026-05-31 19:37:25,241  INFO  === Début réorganisation — 10 fiche(s) ===
+2026-05-31 19:37:25,243  INFO  RENOMME  2026-05-31_193506_note_sans_titre.md  →  note_sans_titre.md
+2026-05-31 19:37:25,243  INFO  RENOMME  Drawing 2026-05-31 19.31.15.excalidraw.md  →  note_sans_titre.md
+2026-05-31 19:37:25,244  INFO  RENOMME  2026-05-31_192226_limage_presente_une_etiquette_de_produit_ikea_typi.md  →  limage_presente_une_etiquette_de_produit_ikea_typi.md
+2026-05-31 19:37:25,244  INFO  RENOMME  2026-05-31_185332_lintelligence_artificielle_ia_est_un_vaste_domaine.md  →  lintelligence_artificielle_ia_est_un_vaste_domaine.md
+2026-05-31 19:37:25,245  INFO  RENOMME  2026-05-31_190125_les_bots_sont_des_programmes_informatiques_concus.md  →  les_bots_sont_des_programmes_informatiques_concus.md
+2026-05-31 19:37:25,246  INFO  RENOMME  2026-05-31_190434_ce_document_analyse_les_problemes_rencontres_avec.md  →  ce_document_analyse_les_problemes_rencontres_avec.md
+2026-05-31 19:37:25,246  INFO  RENOMME  2026-05-31_192402_lidee_principale_de_cette_note_est_de_servir_de_ra.md  →  lidee_principale_de_cette_note_est_de_servir_de_ra.md
+2026-05-31 19:37:25,247  INFO  RENOMME  2026-05-31_192506_le_message_est_une_note_personnelle_ou_le_locuteur.md  →  le_message_est_une_note_personnelle_ou_le_locuteur.md
+2026-05-31 19:37:25,247  INFO  RENOMME  2026-05-31_192904_la_conversation_met_en_lumiere_deux_outils_rtk_et.md  →  la_conversation_met_en_lumiere_deux_outils_rtk_et.md
+2026-05-31 19:37:25,248  INFO  RENOMME  2026-05-31_185448_lintelligence_artificielle_ia_est_la_science_et_li.md  →  lintelligence_artificielle_ia_est_la_science_et_li.md
+2026-05-31 19:37:25,248  INFO  === Fin — 10 traitée(s), 0 erreur(s) ===

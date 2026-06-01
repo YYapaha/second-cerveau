@@ -159,6 +159,24 @@ def modifier_tags_dropbox(path: str, nouveaux_tags: str) -> None:
     nouveau = re.sub(r"\*\*TAGS\*\*\s*:.*", f"**TAGS** : {nouveaux_tags}", contenu)
     dbx.files_upload(nouveau.encode("utf-8"), path, mode=dbx_mod.files.WriteMode.overwrite)
 
+def ajouter_tag_dropbox(path: str, nouveau_tag: str) -> str:
+    if not nouveau_tag.startswith("#"):
+        nouveau_tag = f"#{nouveau_tag.lstrip('#')}"
+    contenu = telecharger_fiche(path)
+    tags_actuels = extraire_champ(contenu, "TAGS")
+    nouveaux = f"{tags_actuels} {nouveau_tag}".strip()
+    modifier_tags_dropbox(path, nouveaux)
+    return nouveaux
+
+def supprimer_tag_dropbox(path: str, tag: str) -> str:
+    tag_clean = tag.lstrip("#").lower()
+    contenu = telecharger_fiche(path)
+    tags_actuels = extraire_champ(contenu, "TAGS")
+    tags_liste = [t for t in tags_actuels.split() if t.lstrip("#").lower() != tag_clean]
+    nouveaux = " ".join(tags_liste)
+    modifier_tags_dropbox(path, nouveaux)
+    return nouveaux
+
 def modifier_titre_dropbox(path: str, nouveau_titre: str) -> str:
     import dropbox as dbx_mod
     dbx = get_dropbox()
@@ -305,6 +323,22 @@ def kb_modifier_fiche(filename: str) -> InlineKeyboardMarkup:
         InlineKeyboardButton("✏️ Modifier titre", callback_data=cb("edit_title", filename)),
         InlineKeyboardButton("↩️ Annuler",        callback_data="ignore"),
     ]])
+
+def kb_tags_menu(filename: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("➕ Ajouter un tag",      callback_data=cb("ta", filename))],
+        [InlineKeyboardButton("➖ Enlever un tag",      callback_data=cb("tr", filename))],
+        [InlineKeyboardButton("🔄 Réécrire tous les tags", callback_data=cb("tw", filename))],
+        [InlineKeyboardButton("↩️ Annuler",             callback_data="ignore")],
+    ])
+
+def kb_tags_liste(filename: str, tags: list[str]) -> InlineKeyboardMarkup:
+    boutons = [
+        [InlineKeyboardButton(f"❌ {tag}", callback_data=f"td:{filename}:{tag.lstrip('#')}"[:64])]
+        for tag in tags
+    ]
+    boutons.append([InlineKeyboardButton("↩️ Annuler", callback_data="ignore")])
+    return InlineKeyboardMarkup(boutons)
 
 def kb_liste_fiches(fiches: list, prefix: str = "view") -> InlineKeyboardMarkup:
     boutons = [
@@ -542,17 +576,19 @@ async def traiter_vocal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def _appliquer_edit(update: Update, context, edit: dict, valeur: str) -> None:
     path = f"{DROPBOX_ROOT}/{edit['filename']}"
     try:
-        if edit["type"] == "tags":
-            # Valider format tags
+        t = edit["type"]
+        if t == "tags_add":
+            nouveaux = ajouter_tag_dropbox(path, valeur.strip())
+            await update.message.reply_text(f"✅ Tag ajouté. Tags actuels : `{nouveaux}`", parse_mode="Markdown")
+        elif t == "tags_rewrite":
             tags = valeur.strip()
             if not tags.startswith("#"):
-                tags = " ".join(f"#{t.lstrip('#')}" for t in tags.split())
+                tags = " ".join(f"#{w.lstrip('#')}" for w in tags.split())
             modifier_tags_dropbox(path, tags)
-            await update.message.reply_text(f"✅ Tags mis à jour : `{tags}`", parse_mode="Markdown")
-        else:
+            await update.message.reply_text(f"✅ Tags réécrits : `{tags}`", parse_mode="Markdown")
+        else:  # title
             nouveau_path = modifier_titre_dropbox(path, valeur.strip())
-            nouveau_nom = nouveau_path.split("/")[-1]
-            await update.message.reply_text(f"✅ Fiche renommée :\n`{nouveau_nom}`", parse_mode="Markdown")
+            await update.message.reply_text(f"✅ Fiche renommée :\n`{nouveau_path.split('/')[-1]}`", parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ Erreur modification : {e}")
 
@@ -603,10 +639,54 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     if data.startswith("edit_tags:"):
         filename = data[len("edit_tags:"):]
-        context.user_data["pending_edit"] = {"filename": filename, "type": "tags"}
+        path = f"{DROPBOX_ROOT}/{filename}"
+        tags_actuels = extraire_champ(telecharger_fiche(path), "TAGS")
         await query.edit_message_text(
-            f"🏷️ Envoie les nouveaux tags pour `{filename}`\n"
-            "_Ex : #react #performance #api_",
+            f"🏷️ *Tags actuels :* `{tags_actuels or 'aucun'}`\n\nQue veux-tu faire ?",
+            parse_mode="Markdown",
+            reply_markup=kb_tags_menu(filename),
+        )
+        return
+
+    if data.startswith("ta:"):  # ajouter tag
+        filename = data[3:]
+        context.user_data["pending_edit"] = {"filename": filename, "type": "tags_add"}
+        await query.edit_message_text(
+            "➕ Envoie le tag à ajouter _(ex : #python)_ :",
+            parse_mode="Markdown",
+        )
+        return
+
+    if data.startswith("tr:"):  # enlever tag — affiche la liste
+        filename = data[3:]
+        path = f"{DROPBOX_ROOT}/{filename}"
+        tags_actuels = extraire_champ(telecharger_fiche(path), "TAGS")
+        tags_liste = [t for t in tags_actuels.split() if t.startswith("#")]
+        if not tags_liste:
+            await query.edit_message_text("Aucun tag à supprimer.")
+            return
+        await query.edit_message_text(
+            "➖ *Quel tag veux-tu enlever ?*",
+            parse_mode="Markdown",
+            reply_markup=kb_tags_liste(filename, tags_liste),
+        )
+        return
+
+    if data.startswith("td:"):  # supprimer un tag précis
+        _, filename, tag = data.split(":", 2)
+        path = f"{DROPBOX_ROOT}/{filename}"
+        restants = supprimer_tag_dropbox(path, tag)
+        await query.edit_message_text(
+            f"✅ Tag `#{tag}` supprimé.\nTags restants : `{restants or 'aucun'}`",
+            parse_mode="Markdown",
+        )
+        return
+
+    if data.startswith("tw:"):  # réécrire tous les tags
+        filename = data[3:]
+        context.user_data["pending_edit"] = {"filename": filename, "type": "tags_rewrite"}
+        await query.edit_message_text(
+            "🔄 Envoie les nouveaux tags _(ex : #react #python #api)_ :",
             parse_mode="Markdown",
         )
         return
