@@ -1,5 +1,5 @@
 openai>=1.0.0
-python-telegram-bot>=22.7
+python-telegram-bot[job-queue]>=22.7
 requests>=2.34.2
 trafilatura>=2.0.0
 PyMuPDF>=1.27.0

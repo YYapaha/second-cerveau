@@ -37,44 +37,77 @@ DROPBOX_APP_SECRET = os.environ.get("DROPBOX_APP_SECRET")
 DROPBOX_REFRESH    = os.environ.get("DROPBOX_REFRESH_TOKEN")
 ENABLE_WHISPER     = os.environ.get("ENABLE_WHISPER", "false").lower() == "true"
 
-DROPBOX_FICHES    = "/second_cerveau/fiches"
+DROPBOX_FICHES    = "/Applications/Joplin/fiches"
 DROPBOX_RAW       = "/second_cerveau/raw"
-DROPBOX_BLOCNOTES = "/second_cerveau/blocnotes.md"
-DROPBOX_TRAVAIL   = "/second_cerveau/travail.md"
+DROPBOX_BLOCNOTES = "/Applications/Joplin/fiches/blocnotes.md"
+DROPBOX_TRAVAIL   = "/Applications/Joplin/fiches/travail.md"
+
+TYPES_MAP = {
+    "recherche": "Note", "code": "Tutoriel", "transcription": "Note",
+    "image": "Note", "divers": "Note", "reflexion": "Réflexion",
+    "réflexion": "Réflexion", "outil": "Outil", "tutoriel": "Tutoriel", "note": "Note",
+}
+
+def normaliser_type(type_brut: str) -> str:
+    type_brut = re.sub(r"[\[\]/|]", "", type_brut).strip()
+    for t in {"Note", "Tutoriel", "Outil", "Réflexion"}:
+        if type_brut.lower() == t.lower():
+            return t
+    return TYPES_MAP.get(type_brut.lower(), "Note")
 
 TRIGGERS_BLOCNOTES = {"blocnote", "bloc-note", "blocnotes", "bloc-notes"}
 TRIGGERS_TRAVAIL   = {"travail"}
 
 PROMPT_ANALYSE = """Analyse ce contenu et crée une fiche markdown avec EXACTEMENT ce format :
 
+# [Titre en 5 à 7 mots]
+
+{source_md}
+
+## Résumé rapide
+[Résumé lisible en 30 secondes maximum]
+
+## Analyse complète
+[Analyse détaillée du contenu]
+
 ---
-**TITRE** : (5 à 7 mots maximum, résume précisément le sujet, comme un titre de livre)
-**SOURCE** : {source}
-**DATE** : {date}
-**TAGS** : #tag1 #tag2 #tag3 #tag4 #tag5
-**TYPE** : [Tutoriel|Réflexion|Outil|Recherche|Code|Note|Transcription|Image]
-**POURQUOI_GARDER** : (1 phrase qui me rappellera dans 6 mois pourquoi c'était utile)
-**IDEE_PRINCIPALE** : (2-3 phrases)
+**POURQUOI_GARDER** : [1 phrase qui rappellera dans 6 mois pourquoi c'était utile]
+**IDEE_PRINCIPALE** : [2-3 phrases]
 **POINTS_CLES** :
 - Point concret 1
 - Point concret 2
 - Point concret 3
 **QUAND_RESSORTIR** : "Quand je ferai [tâche], je devrais penser à [ceci]"
-**RESUME_30_SEC** : (résumé que je peux lire en 30 secondes maximum)
-**RESUME_COMPLET** : (analyse détaillée)
----
+**TYPE** : [Note|Tutoriel|Outil|Réflexion]
 
-Règles pour le TITRE : 5 à 7 mots max, pas de ponctuation, pas de guillemets.
-Exemples : "React Server Components optimisation bundle", "Whisper transcription audio locale Python"
+**TAGS** : #tag1 #tag2 #tag3
+**DATE** : {date_heure}
+
+Règles :
+- Titre : 5-7 mots max, pas de ponctuation
+- TYPE : Note, Tutoriel, Outil ou Réflexion uniquement
+- TAGS : 3 maximum
 
 Contenu à analyser :
 {contenu}"""
 
+
+def formater_source(source: str) -> str:
+    if source.startswith("http://") or source.startswith("https://"):
+        return f"[{source}]({source})"
+    return f"*Source : {source}*" if source not in ("texte-brut", "presse-papier", "telegram-note", "telegram-vocal") else ""
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def extraire_champ(fiche_md: str, champ: str) -> str:
-    match = re.search(rf"\*\*{champ}\*\*\s*:\s*(.+?)(?=\n\*\*|\Z)", fiche_md, re.DOTALL)
-    return match.group(1).strip() if match else ""
+    match = re.search(rf"\*\*{champ}\*\*\s*:\s*(.+?)(?=\n\*\*|\n##|\Z)", fiche_md, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    if champ == "TITRE":
+        match = re.search(r"^#\s+(.+)", fiche_md, re.MULTILINE)
+        if match:
+            return match.group(1).strip()
+    return ""
 
 
 def slugifier(texte: str, max_len: int = 50) -> str:
@@ -88,10 +121,8 @@ def slugifier(texte: str, max_len: int = 50) -> str:
 
 
 def chemin_dropbox(fiche_md: str) -> str:
-    """Construit le chemin Dropbox : /second_cerveau/fiches/TYPE/slug.md"""
-    type_gemini = extraire_champ(fiche_md, "TYPE")
-    type_gemini = re.sub(r"[\[\]/|]", "", type_gemini).strip()
-    sous_dossier = re.sub(r"\s+", "_", type_gemini) if type_gemini else "Divers"
+    """Construit le chemin Dropbox : /Applications/Joplin/fiches/TYPE/slug.md"""
+    sous_dossier = normaliser_type(extraire_champ(fiche_md, "TYPE"))
 
     titre = extraire_champ(fiche_md, "TITRE")
     if titre:
@@ -223,8 +254,8 @@ def analyser_contenu(contenu: str, source: str) -> str:
     from openai import OpenAI
     client = OpenAI(api_key=OPENAI_API_KEY)
     prompt = PROMPT_ANALYSE.format(
-        source=source,
-        date=datetime.now().strftime("%Y-%m-%d"),
+        source_md=formater_source(source),
+        date_heure=datetime.now().strftime("%d/%m/%Y %H:%M"),
         contenu=contenu,
     )
     response = client.chat.completions.create(
