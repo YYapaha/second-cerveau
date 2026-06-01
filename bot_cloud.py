@@ -1,29 +1,17 @@
 """
-bot_cloud.py — Bot Telegram pour Railway
-Capture → Gemini → Dropbox (pas de stockage local)
+bot_cloud.py — Second Cerveau Bot Telegram (Railway)
+Capture → OpenAI → Dropbox | Menus inline | Modification de fiches
 """
-import io
-import os
-import re
-import sys
-import logging
-import tempfile
-import unicodedata
+import io, os, re, sys, logging, tempfile, unicodedata
 from datetime import datetime
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
+    Application, CommandHandler, MessageHandler,
+    CallbackQueryHandler, ContextTypes, filters,
 )
 
-logging.basicConfig(
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    level=logging.INFO,
-)
+logging.basicConfig(format="%(asctime)s [%(levelname)s] %(message)s", level=logging.INFO)
 log = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -35,32 +23,18 @@ DROPBOX_TOKEN      = os.environ.get("DROPBOX_ACCESS_TOKEN")
 DROPBOX_APP_KEY    = os.environ.get("DROPBOX_APP_KEY")
 DROPBOX_APP_SECRET = os.environ.get("DROPBOX_APP_SECRET")
 DROPBOX_REFRESH    = os.environ.get("DROPBOX_REFRESH_TOKEN")
-ENABLE_WHISPER     = os.environ.get("ENABLE_WHISPER", "false").lower() == "true"
 
-DROPBOX_FICHES    = "/Applications/Joplin"
+DROPBOX_ROOT      = "/Applications/Joplin"
 DROPBOX_RAW       = "/second_cerveau/raw"
-DROPBOX_BLOCNOTES = "/Applications/Joplin/blocnotes.md"
-DROPBOX_TRAVAIL   = "/Applications/Joplin/travail.md"
+DROPBOX_BLOCNOTES = f"{DROPBOX_ROOT}/blocnotes.md"
+DROPBOX_TRAVAIL   = f"{DROPBOX_ROOT}/travail.md"
 
-TYPES_MAP = {
-    "recherche": "Note", "code": "Tutoriel", "transcription": "Note",
-    "image": "Note", "divers": "Note", "reflexion": "Réflexion",
-    "réflexion": "Réflexion", "outil": "Outil", "tutoriel": "Tutoriel", "note": "Note",
-}
-
-def normaliser_type(type_brut: str) -> str:
-    type_brut = re.sub(r"[\[\]/|]", "", type_brut).strip()
-    for t in {"Note", "Tutoriel", "Outil", "Réflexion"}:
-        if type_brut.lower() == t.lower():
-            return t
-    return TYPES_MAP.get(type_brut.lower(), "Note")
-
-TRIGGERS_BLOCNOTES = {"blocnote", "bloc-note", "blocnotes", "bloc-notes"}
 TRIGGERS_TRAVAIL   = {"travail"}
+TRIGGERS_BLOCNOTES = {"blocnote", "bloc-note", "blocnotes", "bloc-notes"}
 
 PROMPT_ANALYSE = """Analyse ce contenu et crée une fiche markdown avec EXACTEMENT ce format :
 
-# [Titre en 5 à 7 mots]
+# [Titre en 2 à 3 mots, trés descriptif et complet]
 
 {source_md}
 
@@ -71,31 +45,25 @@ PROMPT_ANALYSE = """Analyse ce contenu et crée une fiche markdown avec EXACTEME
 [Analyse détaillée du contenu]
 
 ---
-**POURQUOI_GARDER** : [1 phrase qui rappellera dans 6 mois pourquoi c'était utile]
-**IDEE_PRINCIPALE** : [2-3 phrases]
+**POURQUOI_GARDER** : [1 phrase]
+**IDEE_PRINCIPALE** : [7-8 phrases]
 **POINTS_CLES** :
 - Point concret 1
 - Point concret 2
 - Point concret 3
+- Point concret 4
+- Point concret 5
+
 **QUAND_RESSORTIR** : "Quand je ferai [tâche], je devrais penser à [ceci]"
 **TYPE** : [Note|Tutoriel|Outil|Réflexion]
 
 **TAGS** : #tag1 #tag2 #tag3
 **DATE** : {date_heure}
 
-Règles :
-- Titre : 5-7 mots max, pas de ponctuation
-- TYPE : Note, Tutoriel, Outil ou Réflexion uniquement
-- TAGS : 3 maximum
+Règles : Titre 2-3 mots, TYPE parmi Note/Tutoriel/Outil/Réflexion, max 3 tags.
 
 Contenu à analyser :
 {contenu}"""
-
-
-def formater_source(source: str) -> str:
-    if source.startswith("http://") or source.startswith("https://"):
-        return f"[{source}]({source})"
-    return f"*Source : {source}*" if source not in ("texte-brut", "presse-papier", "telegram-note", "telegram-vocal") else ""
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -109,7 +77,6 @@ def extraire_champ(fiche_md: str, champ: str) -> str:
             return match.group(1).strip()
     return ""
 
-
 def slugifier(texte: str, max_len: int = 50) -> str:
     texte = unicodedata.normalize("NFKD", texte)
     texte = texte.encode("ascii", "ignore").decode("ascii")
@@ -119,23 +86,24 @@ def slugifier(texte: str, max_len: int = 50) -> str:
     texte = texte.strip("_")
     return texte[:max_len].rstrip("_") or "note"
 
+def formater_source(source: str) -> str:
+    if source.startswith("http://") or source.startswith("https://"):
+        return f"[{source}]({source})"
+    if source not in ("texte-brut", "presse-papier", "telegram-note", "telegram-vocal"):
+        return f"*Source : {source}*"
+    return ""
 
 def generer_nom_fichier(fiche_md: str) -> str:
-    """TAG_mot1_mot2_mot3.md — tag en majuscules + 3 mots du titre."""
     tags_brut = extraire_champ(fiche_md, "TAGS")
     match_tag = re.search(r"#([\w\-]+)", tags_brut) if tags_brut else None
     tag = slugifier(match_tag.group(1)).upper() if match_tag else "DIVERS"
-    titre = extraire_champ(fiche_md, "TITRE")
-    if not titre:
-        idee = extraire_champ(fiche_md, "IDEE_PRINCIPALE")
-        titre = idee.split(".")[0] if idee else "note"
+    titre = extraire_champ(fiche_md, "TITRE") or extraire_champ(fiche_md, "IDEE_PRINCIPALE").split(".")[0]
     mots = [m for m in slugifier(titre).split("_") if m and m != tag.lower()][:3]
-    titre_court = "_".join(mots) if mots else "note"
-    return f"{tag}_{titre_court}.md"
+    return f"{tag}_{'_'.join(mots) or 'note'}.md"
 
-
-def chemin_dropbox(fiche_md: str) -> str:
-    return f"{DROPBOX_FICHES}/{generer_nom_fichier(fiche_md)}"
+def cb(prefix: str, filename: str) -> str:
+    """Construit une callback_data ≤ 64 octets."""
+    return f"{prefix}:{filename}"[:64]
 
 # ── Dropbox ───────────────────────────────────────────────────────────────────
 
@@ -143,57 +111,72 @@ def get_dropbox():
     import dropbox
     if DROPBOX_TOKEN:
         return dropbox.Dropbox(DROPBOX_TOKEN)
-    if DROPBOX_APP_KEY and DROPBOX_APP_SECRET and DROPBOX_REFRESH:
-        return dropbox.Dropbox(
-            oauth2_refresh_token=DROPBOX_REFRESH,
-            app_key=DROPBOX_APP_KEY,
-            app_secret=DROPBOX_APP_SECRET,
-        )
-    raise EnvironmentError(
-        "Configure DROPBOX_ACCESS_TOKEN ou "
-        "DROPBOX_APP_KEY + DROPBOX_APP_SECRET + DROPBOX_REFRESH_TOKEN"
+    return dropbox.Dropbox(
+        oauth2_refresh_token=DROPBOX_REFRESH,
+        app_key=DROPBOX_APP_KEY,
+        app_secret=DROPBOX_APP_SECRET,
     )
 
-
 def uploader_fiche(fiche_md: str) -> str:
-    """Upload la fiche Markdown vers Dropbox. Retourne le chemin Dropbox."""
-    import dropbox as dbx_module
+    import dropbox as dbx_mod
     dbx = get_dropbox()
-    path = chemin_dropbox(fiche_md)
-    data = fiche_md.encode("utf-8")
-    dbx.files_upload(data, path, mode=dbx_module.files.WriteMode.overwrite)
-    log.info("Fiche uploadée : %s", path)
+    nom = generer_nom_fichier(fiche_md)
+    path = f"{DROPBOX_ROOT}/{nom}"
+    dbx.files_upload(fiche_md.encode("utf-8"), path, mode=dbx_mod.files.WriteMode.overwrite)
     return path
 
-
-def uploader_raw(data: bytes, nom_fichier: str) -> str:
-    """Upload un fichier original (photo, PDF) dans /second_cerveau/raw/."""
-    import dropbox as dbx_module
+def uploader_raw(data: bytes, nom: str) -> None:
+    import dropbox as dbx_mod
     dbx = get_dropbox()
-    path = f"{DROPBOX_RAW}/{nom_fichier}"
-    dbx.files_upload(data, path, mode=dbx_module.files.WriteMode.overwrite)
-    log.info("Fichier raw uploadé : %s", path)
-    return path
+    dbx.files_upload(data, f"{DROPBOX_RAW}/{nom}", mode=dbx_mod.files.WriteMode.overwrite)
 
-
-def lister_dernieres_fiches(n: int = 5) -> list[dict]:
-    """Liste les n dernières fiches dans Dropbox (triées par date de modif)."""
+def lister_fiches(n: int = 5) -> list:
     import dropbox
     dbx = get_dropbox()
     try:
-        result = dbx.files_list_folder(DROPBOX_FICHES, recursive=True)
+        res = dbx.files_list_folder(DROPBOX_ROOT)
+        exclure = {"blocnotes.md", "travail.md"}
         fiches = [
-            {"name": e.name, "modified": e.server_modified}
-            for e in result.entries
-            if isinstance(e, dropbox.files.FileMetadata) and e.name.endswith(".md")
+            e for e in res.entries
+            if isinstance(e, dropbox.files.FileMetadata)
+            and e.name.endswith(".md")
+            and e.name not in exclure
         ]
-        fiches.sort(key=lambda x: x["modified"], reverse=True)
+        fiches.sort(key=lambda x: x.server_modified, reverse=True)
         return fiches[:n]
     except Exception as e:
-        log.warning("Impossible de lister les fiches Dropbox : %s", e)
+        log.warning("Erreur listage Dropbox : %s", e)
         return []
 
-# ── Extraction de contenu ─────────────────────────────────────────────────────
+def telecharger_fiche(path: str) -> str:
+    _, res = get_dropbox().files_download(path)
+    return res.content.decode("utf-8")
+
+def modifier_tags_dropbox(path: str, nouveaux_tags: str) -> None:
+    import dropbox as dbx_mod
+    dbx = get_dropbox()
+    contenu = telecharger_fiche(path)
+    nouveau = re.sub(r"\*\*TAGS\*\*\s*:.*", f"**TAGS** : {nouveaux_tags}", contenu)
+    dbx.files_upload(nouveau.encode("utf-8"), path, mode=dbx_mod.files.WriteMode.overwrite)
+
+def modifier_titre_dropbox(path: str, nouveau_titre: str) -> str:
+    import dropbox as dbx_mod
+    dbx = get_dropbox()
+    contenu = telecharger_fiche(path)
+    # Mettre à jour le heading dans le contenu
+    nouveau_contenu = re.sub(r"^#\s+.+", f"# {nouveau_titre}", contenu, count=1, flags=re.MULTILINE)
+    # Garder le TAG du nom de fichier, changer seulement le titre
+    ancien_nom = path.split("/")[-1]
+    tag = ancien_nom.split("_")[0]
+    mots = [m for m in slugifier(nouveau_titre).split("_") if m and m != tag.lower()][:3]
+    nouveau_nom = f"{tag}_{'_'.join(mots) or 'note'}.md"
+    nouveau_path = f"{DROPBOX_ROOT}/{nouveau_nom}"
+    dbx.files_upload(nouveau_contenu.encode("utf-8"), nouveau_path, mode=dbx_mod.files.WriteMode.overwrite)
+    if nouveau_path != path:
+        dbx.files_delete_v2(path)
+    return nouveau_path
+
+# ── Extraction ────────────────────────────────────────────────────────────────
 
 def extraire_url(url: str) -> str:
     import requests
@@ -205,318 +188,279 @@ def extraire_url(url: str) -> str:
         pass
     try:
         import trafilatura
-        downloaded = trafilatura.fetch_url(url)
-        texte = trafilatura.extract(downloaded, output_format="markdown")
+        dl = trafilatura.fetch_url(url)
+        texte = trafilatura.extract(dl, output_format="markdown")
         if texte:
             return texte[:20000]
     except Exception:
         pass
     raise ValueError("Impossible d'extraire le contenu de cette URL.")
 
-
 def extraire_image_bytes(data: bytes, mime: str = "image/jpeg") -> str:
     import base64
     from openai import OpenAI
     b64 = base64.b64encode(data).decode()
-    client = OpenAI(api_key=OPENAI_API_KEY)
-    response = client.chat.completions.create(
+    r = OpenAI(api_key=OPENAI_API_KEY).chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": [
             {"type": "text", "text": "Décris cette image en détail. Si elle contient du texte, retranscris-le. Si c'est un graphique, explique les données."},
             {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
         ]}],
     )
-    return response.choices[0].message.content
-
+    return r.choices[0].message.content
 
 def extraire_pdf_bytes(data: bytes) -> str:
     import fitz
     doc = fitz.open(stream=data, filetype="pdf")
-    texte = "\n".join(page.get_text() for page in doc)
-    return texte[:20000]
+    return "\n".join(p.get_text() for p in doc)[:20000]
 
-
-def extraire_audio_tmp(data: bytes, extension: str = ".ogg") -> str:
+def extraire_audio_tmp(data: bytes, ext: str = ".ogg") -> str:
     from openai import OpenAI
-    client = OpenAI(api_key=OPENAI_API_KEY)
-    with tempfile.NamedTemporaryFile(suffix=extension, delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         tmp.write(data)
         tmp_path = tmp.name
     try:
         with open(tmp_path, "rb") as f:
-            transcript = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=f,
-                language="fr",
+            t = OpenAI(api_key=OPENAI_API_KEY).audio.transcriptions.create(
+                model="whisper-1", file=f, language="fr"
             )
-        return transcript.text[:20000]
+        return t.text[:20000]
     finally:
         os.unlink(tmp_path)
 
-
 def analyser_contenu(contenu: str, source: str) -> str:
     from openai import OpenAI
-    client = OpenAI(api_key=OPENAI_API_KEY)
     prompt = PROMPT_ANALYSE.format(
         source_md=formater_source(source),
         date_heure=datetime.now().strftime("%d/%m/%Y %H:%M"),
         contenu=contenu,
     )
-    response = client.chat.completions.create(
+    r = OpenAI(api_key=OPENAI_API_KEY).chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.choices[0].message.content
+    return r.choices[0].message.content
 
-# ── Bloc-notes ───────────────────────────────────────────────────────────────
-
-def ajouter_blocnote(contenu: str) -> None:
-    import dropbox as dbx_module
-    dbx = get_dropbox()
-    now = datetime.now().strftime("%d/%m/%Y %H:%M")
-    nouvelle_ligne = f"- {contenu} — {now}\n"
-
-    # Télécharger le fichier existant ou partir d'un fichier vide
-    try:
-        _, res = dbx.files_download(DROPBOX_BLOCNOTES)
-        texte_actuel = res.content.decode("utf-8")
-    except dbx_module.exceptions.ApiError:
-        texte_actuel = "# Bloc-notes\n\n"
-
-    nouveau_contenu = (texte_actuel + nouvelle_ligne).encode("utf-8")
-    dbx.files_upload(nouveau_contenu, DROPBOX_BLOCNOTES, mode=dbx_module.files.WriteMode.overwrite)
-
-
-# ── Travail ───────────────────────────────────────────────────────────────────
-
-def ajouter_travail(contenu: str) -> None:
-    import dropbox as dbx_module
-    dbx = get_dropbox()
-    now = datetime.now().strftime("%d/%m/%Y %H:%M")
-    nouvelle_ligne = f"- {contenu} — {now}\n"
-    try:
-        _, res = dbx.files_download(DROPBOX_TRAVAIL)
-        texte_actuel = res.content.decode("utf-8")
-    except dbx_module.exceptions.ApiError:
-        texte_actuel = "# Travail\n\n"
-    nouveau_contenu = (texte_actuel + nouvelle_ligne).encode("utf-8")
-    dbx.files_upload(nouveau_contenu, DROPBOX_TRAVAIL, mode=dbx_module.files.WriteMode.overwrite)
-
-
+# ── Bloc-notes & Travail ──────────────────────────────────────────────────────
 
 def lire_fichier_dropbox(path: str) -> str:
-    import dropbox as dbx_module
-    dbx = get_dropbox()
+    import dropbox as dbx_mod
     try:
-        _, res = dbx.files_download(path)
-        lignes = res.content.decode("utf-8").splitlines()
-        return "\n".join(l for l in lignes if l.startswith("- "))
-    except dbx_module.exceptions.ApiError:
+        _, res = get_dropbox().files_download(path)
+        return "\n".join(l for l in res.content.decode("utf-8").splitlines() if l.startswith("- "))
+    except dbx_mod.exceptions.ApiError:
         return ""
 
+def _ajouter_ligne(path: str, header: str, contenu: str) -> None:
+    import dropbox as dbx_mod
+    dbx = get_dropbox()
+    now = datetime.now().strftime("%d/%m/%Y %H:%M")
+    try:
+        _, res = dbx.files_download(path)
+        texte = res.content.decode("utf-8")
+    except dbx_mod.exceptions.ApiError:
+        texte = f"# {header}\n\n"
+    dbx.files_upload(
+        (texte + f"- {contenu} — {now}\n").encode("utf-8"),
+        path, mode=dbx_mod.files.WriteMode.overwrite,
+    )
 
-def supprimer_taches(path: str, indices: set[int]) -> int:
-    """Supprime les tâches aux indices donnés (1-based). Retourne le nb supprimé."""
-    import dropbox as dbx_module
+def ajouter_blocnote(c: str): _ajouter_ligne(DROPBOX_BLOCNOTES, "Bloc-notes", c)
+def ajouter_travail(c: str):  _ajouter_ligne(DROPBOX_TRAVAIL,   "Travail",    c)
+
+def supprimer_taches(path: str, indices: set) -> int:
+    import dropbox as dbx_mod
     dbx = get_dropbox()
     try:
         _, res = dbx.files_download(path)
-        contenu = res.content.decode("utf-8")
-    except dbx_module.exceptions.ApiError:
+        lignes = res.content.decode("utf-8").splitlines(keepends=True)
+    except dbx_mod.exceptions.ApiError:
         return 0
+    taches = [(i, l) for i, l in enumerate(lignes) if l.strip().startswith("- ")]
+    a_sup = {taches[i - 1][0] for i in indices if 1 <= i <= len(taches)}
+    dbx.files_upload(
+        "".join(l for i, l in enumerate(lignes) if i not in a_sup).encode("utf-8"),
+        path, mode=dbx_mod.files.WriteMode.overwrite,
+    )
+    return len(a_sup)
 
-    toutes_lignes = contenu.splitlines(keepends=True)
-    taches = [(i, l) for i, l in enumerate(toutes_lignes) if l.strip().startswith("- ")]
-    a_supprimer = {taches[i - 1][0] for i in indices if 1 <= i <= len(taches)}
-    nouvelles_lignes = [l for i, l in enumerate(toutes_lignes) if i not in a_supprimer]
-    dbx.files_upload("".join(nouvelles_lignes).encode("utf-8"), path, mode=dbx_module.files.WriteMode.overwrite)
-    return len(a_supprimer)
+# ── Inline keyboards ──────────────────────────────────────────────────────────
 
+def kb_menu_principal() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📄 Dernières fiches", callback_data="menu:dernieres")],
+        [InlineKeyboardButton("✏️ Modifier une fiche", callback_data="menu:modifier")],
+    ])
+
+def kb_apres_capture(filename: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("🏷️ Tags",  callback_data=cb("edit_tags",   filename)),
+        InlineKeyboardButton("✏️ Titre", callback_data=cb("edit_title",  filename)),
+        InlineKeyboardButton("❌ OK",    callback_data="ignore"),
+    ]])
+
+def kb_modifier_fiche(filename: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("🏷️ Modifier tags",  callback_data=cb("edit_tags",  filename)),
+        InlineKeyboardButton("✏️ Modifier titre", callback_data=cb("edit_title", filename)),
+        InlineKeyboardButton("↩️ Annuler",        callback_data="ignore"),
+    ]])
+
+def kb_liste_fiches(fiches: list, prefix: str = "view") -> InlineKeyboardMarkup:
+    boutons = [
+        [InlineKeyboardButton(f"📄 {f.name[:40]}", callback_data=cb(prefix, f.name))]
+        for f in fiches
+    ]
+    return InlineKeyboardMarkup(boutons)
+
+# ── Recap scheduler ───────────────────────────────────────────────────────────
 
 async def envoyer_recap_matin(context) -> None:
     if not TELEGRAM_CHAT_ID:
-        log.warning("TELEGRAM_CHAT_ID non défini — recap ignoré.")
         return
-
-    travail   = lire_fichier_dropbox(DROPBOX_TRAVAIL)
-    blocnotes = lire_fichier_dropbox(DROPBOX_BLOCNOTES)
-
+    travail   = lire_fichier_dropbox(DROPBOX_TRAVAIL).splitlines()
+    blocnotes = lire_fichier_dropbox(DROPBOX_BLOCNOTES).splitlines()
     parties = ["☀️ *Bon matin !*\n"]
     if travail:
-        parties.append(f"💼 *Travail :*\n{travail}")
+        parties.append("💼 *Travail :*\n" + "\n".join(f"  T{i+1} {t}" for i, t in enumerate(travail)))
     if blocnotes:
-        parties.append(f"📝 *Bloc-notes :*\n{blocnotes}")
+        parties.append("📝 *Bloc-notes :*\n" + "\n".join(f"  B{i+1} {b}" for i, b in enumerate(blocnotes)))
     if not travail and not blocnotes:
         parties.append("Aucune tâche en attente. Belle journée !")
-
     await context.bot.send_message(
         chat_id=TELEGRAM_CHAT_ID,
         text="\n\n".join(parties),
         parse_mode="Markdown",
     )
 
+# ── Handlers ─────────────────────────────────────────────────────────────────
 
-# ── Handlers Telegram ─────────────────────────────────────────────────────────
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "🧠 *Second Cerveau* — je capture et organise tes connaissances.\n\n"
+        "Envoie-moi une URL, un texte, une photo, un PDF ou un vocal.\n"
+        "Tu peux aussi préfixer par *travail* ou *blocnote*.\n\n"
+        "Que veux-tu faire ?",
+        parse_mode="Markdown",
+        reply_markup=kb_menu_principal(),
+    )
 
-async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    args = context.args  # ex: ["T1", "T3", "B2"]
-
-    # Sans argument → afficher la liste numérotée
-    if not args:
-        travail   = lire_fichier_dropbox(DROPBOX_TRAVAIL).splitlines()
-        blocnotes = lire_fichier_dropbox(DROPBOX_BLOCNOTES).splitlines()
-        lignes = []
-        if travail:
-            lignes.append("💼 *Travail :*")
-            for i, t in enumerate(travail, 1):
-                lignes.append(f"  T{i} {t}")
-        if blocnotes:
-            lignes.append("\n📝 *Bloc-notes :*")
-            for i, b in enumerate(blocnotes, 1):
-                lignes.append(f"  B{i} {b}")
-        if not lignes:
-            await update.message.reply_text("✅ Aucune tâche en attente !")
-            return
-        lignes.append("\n_Réponds_ `/done T1 B2` _pour cocher des tâches_")
-        await update.message.reply_text("\n".join(lignes), parse_mode="Markdown")
+async def cmd_dernieres(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    msg = update.message or update.callback_query.message
+    fiches = lister_fiches(5)
+    if not fiches:
+        await msg.reply_text("Aucune fiche dans Dropbox pour l'instant.")
         return
-
-    # Avec arguments → supprimer les tâches cochées
-    t_indices = set()
-    b_indices = set()
-    for arg in args:
-        arg = arg.upper()
-        try:
-            if arg.startswith("T"):
-                t_indices.add(int(arg[1:]))
-            elif arg.startswith("B"):
-                b_indices.add(int(arg[1:]))
-        except ValueError:
-            pass
-
-    if not t_indices and not b_indices:
-        await update.message.reply_text("❓ Format : `/done T1 T3 B2`", parse_mode="Markdown")
-        return
-
-    msg = await update.message.reply_text("⏳ Mise à jour…")
-    total = 0
-    if t_indices:
-        total += supprimer_taches(DROPBOX_TRAVAIL, t_indices)
-    if b_indices:
-        total += supprimer_taches(DROPBOX_BLOCNOTES, b_indices)
-    await msg.edit_text(f"✅ {total} tâche(s) cochée(s) comme faite(s) !")
-
+    lignes = ["📚 *5 dernières fiches :*\n"]
+    for f in fiches:
+        date_str = f.server_modified.strftime("%d/%m %H:%M")
+        lignes.append(f"• `{f.name}` _{date_str}_")
+    await msg.reply_text(
+        "\n".join(lignes),
+        parse_mode="Markdown",
+        reply_markup=kb_liste_fiches(fiches, prefix="edit_fiche"),
+    )
 
 async def cmd_travail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     taches = lire_fichier_dropbox(DROPBOX_TRAVAIL).splitlines()
     if not taches:
         await update.message.reply_text("💼 Aucune tâche travail en cours !")
         return
-    lignes = ["💼 *Tâches travail :*\n"]
-    for i, t in enumerate(taches, 1):
-        lignes.append(f"  T{i} {t}")
+    lignes = ["💼 *Tâches travail :*\n"] + [f"  T{i+1} {t}" for i, t in enumerate(taches)]
     lignes.append("\n_Tape_ `/done T1 T3` _pour cocher des tâches_")
     await update.message.reply_text("\n".join(lignes), parse_mode="Markdown")
-
 
 async def cmd_blocnotes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     notes = lire_fichier_dropbox(DROPBOX_BLOCNOTES).splitlines()
     if not notes:
         await update.message.reply_text("📝 Bloc-notes vide !")
         return
-    lignes = ["📝 *Bloc-notes :*\n"]
-    for i, n in enumerate(notes, 1):
-        lignes.append(f"  B{i} {n}")
+    lignes = ["📝 *Bloc-notes :*\n"] + [f"  B{i+1} {n}" for i, n in enumerate(notes)]
     lignes.append("\n_Tape_ `/done B1 B3` _pour cocher des notes_")
     await update.message.reply_text("\n".join(lignes), parse_mode="Markdown")
 
+async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    args = context.args
+    if not args:
+        travail   = lire_fichier_dropbox(DROPBOX_TRAVAIL).splitlines()
+        blocnotes = lire_fichier_dropbox(DROPBOX_BLOCNOTES).splitlines()
+        lignes = []
+        if travail:
+            lignes.append("💼 *Travail :*")
+            lignes += [f"  T{i+1} {t}" for i, t in enumerate(travail)]
+        if blocnotes:
+            lignes.append("\n📝 *Bloc-notes :*")
+            lignes += [f"  B{i+1} {b}" for i, b in enumerate(blocnotes)]
+        if not lignes:
+            await update.message.reply_text("✅ Aucune tâche en attente !")
+            return
+        lignes.append("\n_Réponds_ `/done T1 B2` _pour cocher_")
+        await update.message.reply_text("\n".join(lignes), parse_mode="Markdown")
+        return
+    t_idx, b_idx = set(), set()
+    for a in args:
+        a = a.upper()
+        try:
+            if a.startswith("T"): t_idx.add(int(a[1:]))
+            elif a.startswith("B"): b_idx.add(int(a[1:]))
+        except ValueError:
+            pass
+    if not t_idx and not b_idx:
+        await update.message.reply_text("❓ Format : `/done T1 T3 B2`", parse_mode="Markdown")
+        return
+    msg = await update.message.reply_text("⏳ Mise à jour…")
+    total = 0
+    if t_idx: total += supprimer_taches(DROPBOX_TRAVAIL, t_idx)
+    if b_idx: total += supprimer_taches(DROPBOX_BLOCNOTES, b_idx)
+    await msg.edit_text(f"✅ {total} tâche(s) cochée(s) !")
 
 async def cmd_monid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    chat_id = update.effective_chat.id
     await update.message.reply_text(
-        f"🪪 Ton Chat ID : `{chat_id}`\n\n"
-        "Utilise ce numéro pour configurer le bookmarklet navigateur.",
+        f"🪪 Ton Chat ID : `{update.effective_chat.id}`",
         parse_mode="Markdown",
     )
 
+# ── Capture ───────────────────────────────────────────────────────────────────
 
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        "🧠 *Second Cerveau Cloud* — je capture tout pour toi !\n\n"
-        "Envoie-moi :\n"
-        "• Une URL → j'extrais l'article\n"
-        "• Un texte → je crée une note\n"
-        "• Une photo → j'analyse avec Gemini Vision\n"
-        "• Un PDF → j'extrais le contenu\n"
-        f"• Un vocal → {'transcription Whisper' if ENABLE_WHISPER else 'non disponible (plan cloud)'}\n\n"
-        "Tout est sauvegardé dans ton Dropbox 📦\n"
-        "Commandes : /help /dernieres",
+async def _confirmer_capture(msg, path: str) -> None:
+    nom = path.split("/")[-1]
+    await msg.edit_text(
+        f"✅ *Capturé !*\n\n`{nom}`\n\n_Veux-tu modifier quelque chose ?_",
         parse_mode="Markdown",
+        reply_markup=kb_apres_capture(nom),
     )
-
-
-async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        "📋 *Messages acceptés :*\n\n"
-        "🔗 URL → extraction web\n"
-        "📝 Texte → note directe\n"
-        "📷 Photo → Gemini Vision\n"
-        "📄 Document PDF → extraction texte\n"
-        f"🎤 Vocal → {'Whisper local' if ENABLE_WHISPER else '❌ désactivé (CPU Railway)'}\n\n"
-        "*/dernieres* → 5 dernières fiches Dropbox",
-        parse_mode="Markdown",
-    )
-
-
-async def cmd_dernieres(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    msg = await update.message.reply_text("⏳ Récupération depuis Dropbox…")
-    try:
-        fiches = lister_dernieres_fiches(5)
-        if not fiches:
-            await msg.edit_text("Aucune fiche dans Dropbox pour l'instant.")
-            return
-        lignes = ["📚 *5 dernières fiches :*\n"]
-        for f in fiches:
-            date_str = f["modified"].strftime("%d/%m %H:%M")
-            lignes.append(f"• `{f['name']}` _{date_str}_")
-        await msg.edit_text("\n".join(lignes), parse_mode="Markdown")
-    except Exception as e:
-        await msg.edit_text(f"❌ Erreur Dropbox : {e}")
-
 
 async def traiter_texte(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     texte = (update.message.text or "").strip()
-
     premier_mot = texte.split()[0].lower() if texte else ""
 
-    # Détection travail
+    # ── Mode édition en attente ──
+    edit = context.user_data.get("pending_edit")
+    if edit:
+        del context.user_data["pending_edit"]
+        await _appliquer_edit(update, context, edit, texte)
+        return
+
+    # ── Routage travail / blocnote ──
     if premier_mot in TRIGGERS_TRAVAIL:
-        contenu_note = texte[len(premier_mot):].strip()
-        if not contenu_note:
+        contenu = texte[len(premier_mot):].strip()
+        if not contenu:
             await update.message.reply_text("💼 Écris quelque chose après `travail` !")
             return
-        msg = await update.message.reply_text("💼 Ajout aux tâches travail…")
-        try:
-            ajouter_travail(contenu_note)
-            await msg.edit_text(f"✅ Tâche ajoutée :\n`- {contenu_note}`", parse_mode="Markdown")
-        except Exception as e:
-            await msg.edit_text(f"❌ Erreur travail : {e}")
+        ajouter_travail(contenu)
+        await update.message.reply_text(f"✅ *Tâche ajoutée :*\n`- {contenu}`", parse_mode="Markdown")
         return
 
-    # Détection bloc-notes : "blocnote ...", "bloc-notes ..."
     if premier_mot in TRIGGERS_BLOCNOTES:
-        contenu_note = texte[len(premier_mot):].strip()
-        if not contenu_note:
+        contenu = texte[len(premier_mot):].strip()
+        if not contenu:
             await update.message.reply_text("📝 Écris quelque chose après `blocnote` !")
             return
-        msg = await update.message.reply_text("📝 Ajout au bloc-notes…")
-        try:
-            ajouter_blocnote(contenu_note)
-            await msg.edit_text(f"✅ Ajouté au bloc-notes :\n`- {contenu_note}`", parse_mode="Markdown")
-        except Exception as e:
-            await msg.edit_text(f"❌ Erreur bloc-notes : {e}")
+        ajouter_blocnote(contenu)
+        await update.message.reply_text(f"✅ *Bloc-notes ajouté :*\n`- {contenu}`", parse_mode="Markdown")
         return
 
+    # ── Capture normale ──
     msg = await update.message.reply_text("⏳ Traitement en cours…")
     try:
         if texte.startswith("http://") or texte.startswith("https://"):
@@ -525,151 +469,192 @@ async def traiter_texte(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         else:
             contenu = texte[:20000]
             source = "telegram-note"
-
         fiche_md = analyser_contenu(contenu, source)
         path = uploader_fiche(fiche_md)
-        titre = extraire_champ(fiche_md, "TITRE") or extraire_champ(fiche_md, "IDEE_PRINCIPALE")[:80]
-        await msg.edit_text(
-            f"✅ *Capturé !*\n\n*{titre}*\n\n`{path.split('/')[-1]}`",
-            parse_mode="Markdown",
-        )
+        await _confirmer_capture(msg, path)
     except Exception as e:
-        log.exception("Erreur traitement texte")
+        log.exception("Erreur texte")
         await msg.edit_text(f"❌ {e}")
-
 
 async def traiter_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = await update.message.reply_text("⏳ Analyse de la photo…")
     try:
-        photo = update.message.photo[-1]
-        fichier = await photo.get_file()
         buf = io.BytesIO()
-        await fichier.download_to_memory(buf)
+        await (await update.message.photo[-1].get_file()).download_to_memory(buf)
         data = buf.getvalue()
         nom = f"photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-
         contenu = extraire_image_bytes(data)
         fiche_md = analyser_contenu(contenu, f"telegram-photo:{nom}")
         path = uploader_fiche(fiche_md)
         uploader_raw(data, nom)
-        titre = extraire_champ(fiche_md, "TITRE") or "Photo analysée"
-        await msg.edit_text(
-            f"✅ *Capturé !*\n\n*{titre}*\n\n`{path.split('/')[-1]}`",
-            parse_mode="Markdown",
-        )
+        await _confirmer_capture(msg, path)
     except Exception as e:
-        log.exception("Erreur traitement photo")
+        log.exception("Erreur photo")
         await msg.edit_text(f"❌ {e}")
-
 
 async def traiter_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = await update.message.reply_text("⏳ Extraction du document…")
     try:
         doc = update.message.document
         ext = os.path.splitext(doc.file_name)[1].lower()
-
         if ext not in {".pdf", ".txt", ".md"}:
             await msg.edit_text("❌ Format non supporté. Envoie un PDF ou un fichier texte.")
             return
-
-        fichier = await doc.get_file()
         buf = io.BytesIO()
-        await fichier.download_to_memory(buf)
+        await (await doc.get_file()).download_to_memory(buf)
         data = buf.getvalue()
-
-        if ext == ".pdf":
-            contenu = extraire_pdf_bytes(data)
-        else:
-            contenu = data.decode("utf-8", errors="ignore")[:20000]
-
+        contenu = extraire_pdf_bytes(data) if ext == ".pdf" else data.decode("utf-8", errors="ignore")[:20000]
         fiche_md = analyser_contenu(contenu, f"telegram-doc:{doc.file_name}")
         path = uploader_fiche(fiche_md)
         if ext == ".pdf":
             uploader_raw(data, doc.file_name)
-        titre = extraire_champ(fiche_md, "TITRE") or "Document analysé"
-        await msg.edit_text(
-            f"✅ *Capturé !*\n\n*{titre}*\n\n`{path.split('/')[-1]}`",
-            parse_mode="Markdown",
-        )
+        await _confirmer_capture(msg, path)
     except Exception as e:
-        log.exception("Erreur traitement document")
+        log.exception("Erreur document")
         await msg.edit_text(f"❌ {e}")
-
 
 async def traiter_vocal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = await update.message.reply_text("⏳ Transcription audio…")
     try:
-        vocal = update.message.voice
-        fichier = await vocal.get_file()
         buf = io.BytesIO()
-        await fichier.download_to_memory(buf)
-
+        await (await update.message.voice.get_file()).download_to_memory(buf)
         transcription = extraire_audio_tmp(buf.getvalue(), ".ogg").strip()
         premier_mot = transcription.split()[0].lower() if transcription else ""
 
-        # Routage selon le premier mot prononcé
         if premier_mot in TRIGGERS_TRAVAIL:
-            contenu_note = transcription[len(premier_mot):].strip()
-            ajouter_travail(contenu_note)
-            await msg.edit_text(f"✅ *Tâche travail ajoutée :*\n`- {contenu_note}`", parse_mode="Markdown")
-
+            contenu = transcription[len(premier_mot):].strip()
+            ajouter_travail(contenu)
+            await msg.edit_text(f"✅ *Tâche travail :*\n`- {contenu}`", parse_mode="Markdown")
         elif premier_mot in TRIGGERS_BLOCNOTES:
-            contenu_note = transcription[len(premier_mot):].strip()
-            ajouter_blocnote(contenu_note)
-            await msg.edit_text(f"✅ *Bloc-notes ajouté :*\n`- {contenu_note}`", parse_mode="Markdown")
-
+            contenu = transcription[len(premier_mot):].strip()
+            ajouter_blocnote(contenu)
+            await msg.edit_text(f"✅ *Bloc-notes :*\n`- {contenu}`", parse_mode="Markdown")
         else:
-            # Pas de préambule → fiche complète
             fiche_md = analyser_contenu(transcription, "telegram-vocal")
             path = uploader_fiche(fiche_md)
-            titre = extraire_champ(fiche_md, "TITRE") or "Message vocal"
-            await msg.edit_text(
-                f"✅ *Capturé !*\n\n*{titre}*\n\n`{path.split('/')[-1]}`",
-                parse_mode="Markdown",
-            )
-
+            await _confirmer_capture(msg, path)
     except Exception as e:
-        log.exception("Erreur traitement vocal")
+        log.exception("Erreur vocal")
         await msg.edit_text(f"❌ {e}")
+
+# ── Callbacks ─────────────────────────────────────────────────────────────────
+
+async def _appliquer_edit(update: Update, context, edit: dict, valeur: str) -> None:
+    path = f"{DROPBOX_ROOT}/{edit['filename']}"
+    try:
+        if edit["type"] == "tags":
+            # Valider format tags
+            tags = valeur.strip()
+            if not tags.startswith("#"):
+                tags = " ".join(f"#{t.lstrip('#')}" for t in tags.split())
+            modifier_tags_dropbox(path, tags)
+            await update.message.reply_text(f"✅ Tags mis à jour : `{tags}`", parse_mode="Markdown")
+        else:
+            nouveau_path = modifier_titre_dropbox(path, valeur.strip())
+            nouveau_nom = nouveau_path.split("/")[-1]
+            await update.message.reply_text(f"✅ Fiche renommée :\n`{nouveau_nom}`", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erreur modification : {e}")
+
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data == "ignore":
+        await query.edit_message_reply_markup(reply_markup=None)
+        return
+
+    if data == "menu:dernieres":
+        fiches = lister_fiches(5)
+        if not fiches:
+            await query.edit_message_text("Aucune fiche pour l'instant.")
+            return
+        lignes = ["📚 *5 dernières fiches :*\n"]
+        for f in fiches:
+            lignes.append(f"• `{f.name}` _{f.server_modified.strftime('%d/%m %H:%M')}_")
+        await query.edit_message_text(
+            "\n".join(lignes),
+            parse_mode="Markdown",
+            reply_markup=kb_liste_fiches(fiches, prefix="edit_fiche"),
+        )
+        return
+
+    if data == "menu:modifier":
+        fiches = lister_fiches(5)
+        if not fiches:
+            await query.edit_message_text("Aucune fiche à modifier.")
+            return
+        await query.edit_message_text(
+            "✏️ *Quelle fiche veux-tu modifier ?*",
+            parse_mode="Markdown",
+            reply_markup=kb_liste_fiches(fiches, prefix="edit_fiche"),
+        )
+        return
+
+    if data.startswith("edit_fiche:"):
+        filename = data[len("edit_fiche:"):]
+        await query.edit_message_text(
+            f"✏️ *{filename}*\n\nQue veux-tu modifier ?",
+            parse_mode="Markdown",
+            reply_markup=kb_modifier_fiche(filename),
+        )
+        return
+
+    if data.startswith("edit_tags:"):
+        filename = data[len("edit_tags:"):]
+        context.user_data["pending_edit"] = {"filename": filename, "type": "tags"}
+        await query.edit_message_text(
+            f"🏷️ Envoie les nouveaux tags pour `{filename}`\n"
+            "_Ex : #react #performance #api_",
+            parse_mode="Markdown",
+        )
+        return
+
+    if data.startswith("edit_title:"):
+        filename = data[len("edit_title:"):]
+        context.user_data["pending_edit"] = {"filename": filename, "type": "title"}
+        await query.edit_message_text(
+            f"✏️ Envoie le nouveau titre pour `{filename}`\n"
+            "_3 mots maximum, très descriptif_",
+            parse_mode="Markdown",
+        )
+        return
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    if not TELEGRAM_TOKEN:
-        sys.exit("TELEGRAM_BOT_TOKEN manquant.")
-    if not OPENAI_API_KEY:
-        sys.exit("OPENAI_API_KEY manquante.")
+    if not TELEGRAM_TOKEN:  sys.exit("TELEGRAM_BOT_TOKEN manquant.")
+    if not OPENAI_API_KEY:  sys.exit("OPENAI_API_KEY manquante.")
     if not (DROPBOX_TOKEN or (DROPBOX_APP_KEY and DROPBOX_APP_SECRET and DROPBOX_REFRESH)):
-        sys.exit("Token Dropbox manquant (DROPBOX_ACCESS_TOKEN ou APP_KEY+APP_SECRET+REFRESH_TOKEN).")
+        sys.exit("Token Dropbox manquant.")
 
-    log.info("🤖 Bot Cloud démarré — Dropbox : %s", DROPBOX_FICHES)
+    log.info("🤖 Bot démarré — Dropbox : %s", DROPBOX_ROOT)
 
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # Job quotidien 8h (heure de Paris)
+    # Scheduler 8h 12h 18h 22h
     if TELEGRAM_CHAT_ID and app.job_queue:
         import datetime as dt
         from zoneinfo import ZoneInfo
         paris = ZoneInfo("Europe/Paris")
-        for heure in [8, 12, 18, 22]:
-            app.job_queue.run_daily(
-                envoyer_recap_matin,
-                time=dt.time(heure, 0, 0, tzinfo=paris),
-            )
-        log.info("⏰ Récaps programmés à 8h, 12h, 18h, 22h (Paris)")
-    app.add_handler(CommandHandler("done", cmd_done))
-    app.add_handler(CommandHandler("travail", cmd_travail))
-    app.add_handler(CommandHandler("blocnotes", cmd_blocnotes))
-    app.add_handler(CommandHandler("monid", cmd_monid))
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("help", cmd_help))
-    app.add_handler(CommandHandler("dernieres", cmd_dernieres))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, traiter_texte))
-    app.add_handler(MessageHandler(filters.PHOTO, traiter_photo))
-    app.add_handler(MessageHandler(filters.Document.ALL, traiter_document))
-    app.add_handler(MessageHandler(filters.VOICE, traiter_vocal))
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+        for h in [8, 12, 18, 22]:
+            app.job_queue.run_daily(envoyer_recap_matin, time=dt.time(h, 0, tzinfo=paris))
+        log.info("⏰ Récaps à 8h 12h 18h 22h (Paris)")
 
+    app.add_handler(CommandHandler("start",     cmd_start))
+    app.add_handler(CommandHandler("dernieres", cmd_dernieres))
+    app.add_handler(CommandHandler("travail",   cmd_travail))
+    app.add_handler(CommandHandler("blocnotes", cmd_blocnotes))
+    app.add_handler(CommandHandler("done",      cmd_done))
+    app.add_handler(CommandHandler("monid",     cmd_monid))
+    app.add_handler(CallbackQueryHandler(callback_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, traiter_texte))
+    app.add_handler(MessageHandler(filters.PHOTO,        traiter_photo))
+    app.add_handler(MessageHandler(filters.Document.ALL, traiter_document))
+    app.add_handler(MessageHandler(filters.VOICE,        traiter_vocal))
+
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
