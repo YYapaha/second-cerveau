@@ -37,10 +37,10 @@ DROPBOX_APP_SECRET = os.environ.get("DROPBOX_APP_SECRET")
 DROPBOX_REFRESH    = os.environ.get("DROPBOX_REFRESH_TOKEN")
 ENABLE_WHISPER     = os.environ.get("ENABLE_WHISPER", "false").lower() == "true"
 
-DROPBOX_FICHES    = "/Applications/Joplin/fiches"
+DROPBOX_FICHES    = "/Applications/Joplin"
 DROPBOX_RAW       = "/second_cerveau/raw"
-DROPBOX_BLOCNOTES = "/Applications/Joplin/fiches/blocnotes.md"
-DROPBOX_TRAVAIL   = "/Applications/Joplin/fiches/travail.md"
+DROPBOX_BLOCNOTES = "/Applications/Joplin/blocnotes.md"
+DROPBOX_TRAVAIL   = "/Applications/Joplin/travail.md"
 
 TYPES_MAP = {
     "recherche": "Note", "code": "Tutoriel", "transcription": "Note",
@@ -120,18 +120,22 @@ def slugifier(texte: str, max_len: int = 50) -> str:
     return texte[:max_len].rstrip("_") or "note"
 
 
-def chemin_dropbox(fiche_md: str) -> str:
-    """Construit le chemin Dropbox : /Applications/Joplin/fiches/TYPE/slug.md"""
-    sous_dossier = normaliser_type(extraire_champ(fiche_md, "TYPE"))
-
+def generer_nom_fichier(fiche_md: str) -> str:
+    """TAG_mot1_mot2_mot3.md — tag en majuscules + 3 mots du titre."""
+    tags_brut = extraire_champ(fiche_md, "TAGS")
+    match_tag = re.search(r"#([\w\-]+)", tags_brut) if tags_brut else None
+    tag = slugifier(match_tag.group(1)).upper() if match_tag else "DIVERS"
     titre = extraire_champ(fiche_md, "TITRE")
-    if titre:
-        slug = slugifier(titre)
-    else:
+    if not titre:
         idee = extraire_champ(fiche_md, "IDEE_PRINCIPALE")
-        slug = slugifier(idee.split(".")[0]) if idee else "note_sans_titre"
+        titre = idee.split(".")[0] if idee else "note"
+    mots = [m for m in slugifier(titre).split("_") if m and m != tag.lower()][:3]
+    titre_court = "_".join(mots) if mots else "note"
+    return f"{tag}_{titre_court}.md"
 
-    return f"{DROPBOX_FICHES}/{sous_dossier}/{slug}.md"
+
+def chemin_dropbox(fiche_md: str) -> str:
+    return f"{DROPBOX_FICHES}/{generer_nom_fichier(fiche_md)}"
 
 # ── Dropbox ───────────────────────────────────────────────────────────────────
 

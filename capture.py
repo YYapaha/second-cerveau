@@ -248,21 +248,26 @@ def slugifier(texte: str, max_len: int = 50) -> str:
     return texte[:max_len].rstrip("_") or "note"
 
 
-def sauvegarder_fiche(fiche_md: str, fichier_original: str = None) -> Path:
-    sous_dossier = normaliser_type(extraire_champ(fiche_md, "TYPE"))
+def generer_nom_fichier(fiche_md: str) -> str:
+    """TAG_PRINCIPAL_mot1_mot2_mot3.md — tag en majuscules + 3 mots du titre."""
+    tags_brut = extraire_champ(fiche_md, "TAGS")
+    match_tag = re.search(r"#([\w\-]+)", tags_brut) if tags_brut else None
+    tag = slugifier(match_tag.group(1)).upper() if match_tag else "DIVERS"
 
-    # Slug issu du TITRE Gemini, fallback IDEE_PRINCIPALE, fallback premier tag
     titre = extraire_champ(fiche_md, "TITRE")
-    if titre:
-        slug = slugifier(titre)
-    else:
+    if not titre:
         idee = extraire_champ(fiche_md, "IDEE_PRINCIPALE")
-        slug = slugifier(idee.split(".")[0]) if idee else slugifier(extraire_tag_principal(fiche_md))
+        titre = idee.split(".")[0] if idee else "note"
 
-    nom_fichier = f"{slug}.md"
-    dossier_cible = FICHES_DIR / sous_dossier
-    dossier_cible.mkdir(parents=True, exist_ok=True)
-    chemin_fiche = dossier_cible / nom_fichier
+    mots = [m for m in slugifier(titre).split("_") if m and m != tag.lower()][:3]
+    titre_court = "_".join(mots) if mots else "note"
+    return f"{tag}_{titre_court}.md"
+
+
+def sauvegarder_fiche(fiche_md: str, fichier_original: str = None) -> Path:
+    nom_fichier = generer_nom_fichier(fiche_md)
+    FICHES_DIR.mkdir(parents=True, exist_ok=True)
+    chemin_fiche = FICHES_DIR / nom_fichier
     with open(chemin_fiche, "w", encoding="utf-8") as f:
         f.write(fiche_md)
     if fichier_original:
