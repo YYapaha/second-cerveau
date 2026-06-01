@@ -29,6 +29,9 @@ DROPBOX_RAW       = "/second_cerveau/raw"
 DROPBOX_BLOCNOTES = f"{DROPBOX_ROOT}/blocnotes.md"
 DROPBOX_TRAVAIL   = f"{DROPBOX_ROOT}/travail.md"
 DROPBOX_PROJET    = f"{DROPBOX_ROOT}/projet.md"
+DROPBOX_SETTINGS  = "/second_cerveau/settings.json"
+
+_METEO_DEFAULTS = {"lat": 46.29, "lon": 7.54, "ville": "Sierre, CH", "heure": 7}
 
 TRIGGERS_TRAVAIL   = {"travail"}
 TRIGGERS_BLOCNOTES = {"blocnote", "bloc-note", "blocnotes", "bloc-notes"}
@@ -316,7 +319,27 @@ def kb_menu_principal() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📝 Bloc-notes", callback_data="menu:blocnotes"),
             InlineKeyboardButton("🚀 Projets",    callback_data="menu:projets"),
         ],
+        [InlineKeyboardButton("⚙️ Réglages météo", callback_data="menu:meteo")],
     ])
+
+def kb_meteo_settings() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📍 Changer la ville",  callback_data="ms:ville")],
+        [InlineKeyboardButton("⏰ Changer l'heure",   callback_data="ms:heure")],
+        [InlineKeyboardButton("↩️ Retour",            callback_data="menu:accueil")],
+    ])
+
+def kb_meteo_heures(heure_actuelle: int) -> InlineKeyboardMarkup:
+    heures = [5, 6, 7, 8, 9, 10]
+    rangees = []
+    for i in range(0, len(heures), 3):
+        rangee = []
+        for h in heures[i:i+3]:
+            label = f"{'✅' if h == heure_actuelle else ''}{h}h".strip()
+            rangee.append(InlineKeyboardButton(label, callback_data=f"ms:h:{h}"))
+        rangees.append(rangee)
+    rangees.append([InlineKeyboardButton("↩️ Retour", callback_data="menu:meteo")])
+    return InlineKeyboardMarkup(rangees)
 
 def kb_apres_capture(filename: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
@@ -355,6 +378,26 @@ def kb_liste_fiches(fiches: list, prefix: str = "view") -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(boutons)
 
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+def load_settings() -> dict:
+    import json
+    import dropbox as dbx_mod
+    try:
+        _, res = get_dropbox().files_download(DROPBOX_SETTINGS)
+        return {**_METEO_DEFAULTS, **json.loads(res.content)}
+    except dbx_mod.exceptions.ApiError:
+        return dict(_METEO_DEFAULTS)
+
+def save_settings(s: dict) -> None:
+    import json
+    import dropbox as dbx_mod
+    get_dropbox().files_upload(
+        json.dumps(s, ensure_ascii=False, indent=2).encode(),
+        DROPBOX_SETTINGS,
+        mode=dbx_mod.files.WriteMode.overwrite,
+    )
+
 # ── Météo ─────────────────────────────────────────────────────────────────────
 
 _WMO_FR = {
@@ -384,11 +427,28 @@ _WMO_FR = {
     99: ("⛈️", "Orage violent avec grêle"),
 }
 
-def get_meteo_sierre() -> str:
+def geocoder_ville(query: str) -> tuple:
+    import requests
+    r = requests.get(
+        "https://geocoding-api.open-meteo.com/v1/search",
+        params={"name": query, "count": 1, "language": "fr", "format": "json"},
+        timeout=10,
+    )
+    r.raise_for_status()
+    results = r.json().get("results", [])
+    if not results:
+        raise ValueError(f"Ville introuvable : {query}")
+    res = results[0]
+    nom   = res.get("name", query)
+    pays  = res.get("country_code", "")
+    label = f"{nom}, {pays}" if pays else nom
+    return res["latitude"], res["longitude"], label
+
+def get_meteo(lat: float, lon: float, ville: str) -> str:
     import requests
     url = (
         "https://api.open-meteo.com/v1/forecast"
-        "?latitude=46.29&longitude=7.54"
+        f"?latitude={lat}&longitude={lon}"
         "&daily=weathercode,temperature_2m_max,temperature_2m_min,"
         "precipitation_sum,windspeed_10m_max,uv_index_max"
         "&current_weather=true&timezone=Europe%2FParis"
@@ -401,15 +461,15 @@ def get_meteo_sierre() -> str:
 
     code = int(day["weathercode"])
     emoji, desc = _WMO_FR.get(code, ("🌡️", f"Code {code}"))
-    t_cur  = cur["temperature"]
-    t_max  = day["temperature_2m_max"]
-    t_min  = day["temperature_2m_min"]
-    pluie  = day["precipitation_sum"]
-    vent   = day["windspeed_10m_max"]
-    uv     = day["uv_index_max"]
+    t_cur = cur["temperature"]
+    t_max = day["temperature_2m_max"]
+    t_min = day["temperature_2m_min"]
+    pluie = day["precipitation_sum"]
+    vent  = day["windspeed_10m_max"]
+    uv    = day["uv_index_max"]
 
     lignes = [
-        f"🏔️ *Météo Sierre — {datetime.now().strftime('%d/%m/%Y')}*\n",
+        f"🏔️ *Météo {ville} — {datetime.now().strftime('%d/%m/%Y')}*\n",
         f"{emoji} {desc}",
         f"🌡️ Maintenant : *{t_cur}°C*  •  Min {t_min}°C / Max {t_max}°C",
     ]
@@ -424,7 +484,8 @@ async def envoyer_meteo_matin(context) -> None:
     if not TELEGRAM_CHAT_ID:
         return
     try:
-        texte = get_meteo_sierre()
+        cfg = load_settings()
+        texte = get_meteo(cfg["lat"], cfg["lon"], cfg["ville"])
     except Exception as e:
         log.warning("Erreur météo : %s", e)
         texte = "🌡️ Météo indisponible ce matin."
@@ -432,6 +493,17 @@ async def envoyer_meteo_matin(context) -> None:
         chat_id=TELEGRAM_CHAT_ID,
         text=texte,
         parse_mode="Markdown",
+    )
+
+def reprogrammer_meteo(app, heure: int) -> None:
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+    for job in app.job_queue.get_jobs_by_name("meteo_matin"):
+        job.schedule_removal()
+    app.job_queue.run_daily(
+        envoyer_meteo_matin,
+        time=dt.time(heure, 0, tzinfo=ZoneInfo("Europe/Paris")),
+        name="meteo_matin",
     )
 
 # ── Recap scheduler ───────────────────────────────────────────────────────────
@@ -588,6 +660,21 @@ async def traiter_texte(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     edit = context.user_data.get("pending_edit")
     if edit:
         del context.user_data["pending_edit"]
+        if edit["type"] == "meteo_ville":
+            msg = await update.message.reply_text("⏳ Recherche de la ville…")
+            try:
+                lat, lon, label = geocoder_ville(texte.strip())
+                cfg = load_settings()
+                cfg.update({"lat": lat, "lon": lon, "ville": label})
+                save_settings(cfg)
+                await msg.edit_text(
+                    f"✅ Ville mise à jour : *{label}*\n"
+                    f"📍 Coordonnées : {lat:.4f}, {lon:.4f}",
+                    parse_mode="Markdown",
+                )
+            except Exception as e:
+                await msg.edit_text(f"❌ {e}")
+            return
         await _appliquer_edit(update, context, edit, texte)
         return
 
@@ -859,6 +946,55 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         return
 
+    if data == "menu:accueil":
+        await query.edit_message_text(
+            "🧠 *Second Cerveau* — Que veux-tu faire ?",
+            parse_mode="Markdown",
+            reply_markup=kb_menu_principal(),
+        )
+        return
+
+    if data == "menu:meteo":
+        cfg = load_settings()
+        await query.edit_message_text(
+            f"⚙️ *Réglages météo*\n\n"
+            f"📍 Ville : *{cfg['ville']}*\n"
+            f"⏰ Heure : *{cfg['heure']}h00*",
+            parse_mode="Markdown",
+            reply_markup=kb_meteo_settings(),
+        )
+        return
+
+    if data == "ms:ville":
+        context.user_data["pending_edit"] = {"type": "meteo_ville"}
+        await query.edit_message_text(
+            "📍 Envoie le nom de ta ville _(ex : Genève, CH)_ :",
+            parse_mode="Markdown",
+        )
+        return
+
+    if data == "ms:heure":
+        cfg = load_settings()
+        await query.edit_message_text(
+            "⏰ *À quelle heure recevoir la météo ?*",
+            parse_mode="Markdown",
+            reply_markup=kb_meteo_heures(cfg["heure"]),
+        )
+        return
+
+    if data.startswith("ms:h:"):
+        heure = int(data[5:])
+        cfg = load_settings()
+        cfg["heure"] = heure
+        save_settings(cfg)
+        reprogrammer_meteo(context.application, heure)
+        await query.edit_message_text(
+            f"✅ Météo reprogrammée à *{heure}h00* chaque matin.",
+            parse_mode="Markdown",
+            reply_markup=kb_meteo_settings(),
+        )
+        return
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -876,10 +1012,15 @@ def main() -> None:
         import datetime as dt
         from zoneinfo import ZoneInfo
         paris = ZoneInfo("Europe/Paris")
-        app.job_queue.run_daily(envoyer_meteo_matin, time=dt.time(7, 0, tzinfo=paris))
+        cfg = load_settings()
+        app.job_queue.run_daily(
+            envoyer_meteo_matin,
+            time=dt.time(cfg["heure"], 0, tzinfo=paris),
+            name="meteo_matin",
+        )
         for h in [8, 12, 18, 22]:
             app.job_queue.run_daily(envoyer_recap_matin, time=dt.time(h, 0, tzinfo=paris))
-        log.info("⏰ Météo à 7h, récaps à 8h 12h 18h 22h (Paris)")
+        log.info("⏰ Météo à %dh, récaps à 8h 12h 18h 22h (Paris)", cfg["heure"])
 
     app.add_handler(CommandHandler("start",     cmd_start))
     app.add_handler(CommandHandler("dernieres", cmd_dernieres))
