@@ -3,7 +3,7 @@ bot_cloud.py — Second Cerveau Bot Telegram (Railway)
 Capture → OpenAI → Dropbox | Menus inline | Modification de fiches
 """
 import io, os, re, sys, logging, tempfile, unicodedata
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -30,8 +30,54 @@ DROPBOX_BLOCNOTES = f"{DROPBOX_ROOT}/blocnotes.md"
 DROPBOX_TRAVAIL   = f"{DROPBOX_ROOT}/travail.md"
 DROPBOX_PROJET    = f"{DROPBOX_ROOT}/projet.md"
 DROPBOX_SETTINGS  = "/second_cerveau/settings.json"
+DROPBOX_PLANNING  = "/second_cerveau/planning.json"
 
 _METEO_DEFAULTS = {"lat": 46.29, "lon": 7.54, "ville": "Sierre, CH", "heure": 7}
+
+_SHIFTS_FR = {
+    "AM":    ("🌅", "Matin"),
+    "PM":    ("🌆", "Après-midi"),
+    "OV":    ("🌄", "Ouverture"),
+    "FV":    ("🌇", "Fermeture"),
+    "DAM":   ("🌅", "Demi-matin"),
+    "SAM":   ("🌅", "Split matin"),
+    "DPM":   ("🌆", "Demi après-midi"),
+    "SPM":   ("🌆", "Split après-midi"),
+    "OFF":   ("🎉", "Congé"),
+    "EXT":   ("⭐", "Extra"),
+    "HOL":   ("🏖️", "Férié"),
+    "OLOG":  ("📦", "Ouv. Logistique"),
+    "SOLOG": ("📦", "Split Ouv. Log."),
+}
+
+_JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+
+PROMPT_PLANNING = """Tu analyses un screenshot de planning Excel IKEA.
+
+Trouve la ligne de "Tristan Cailloux" (ou juste "Tristan").
+Extrait le planning pour chaque colonne de jour visible.
+
+La ligne "Date" indique le numéro du jour du mois.
+La ligne "Day" indique MON, TUE, WED, THU, FRI, SAT ou SUN.
+La ligne "Week number" indique le numéro de semaine.
+
+Aujourd'hui c'est le {today}. Utilise ça pour déduire le mois et l'année exacts.
+
+Normalise les codes de shift :
+- O.V / OV → OV
+- F.V / FV → FV
+- D. AM / D.AM → DAM
+- S. AM / S.AM → SAM
+- D. PM / D.PM → DPM
+- S. PM / S.PM → SPM
+- O Log → OLOG
+- S. O Log / S.O Log → SOLOG
+- HOL, EXT, OFF, AM, PM : inchangés
+
+Réponds UNIQUEMENT avec un JSON valide (sans bloc markdown) :
+{{"week": <numéro_semaine>, "days": {{"YYYY-MM-DD": "CODE", ...}}}}
+
+Si Tristan est absent du screenshot : {{"error": "not_found"}}"""
 
 TRIGGERS_TRAVAIL   = {"travail"}
 TRIGGERS_BLOCNOTES = {"blocnote", "bloc-note", "blocnotes", "bloc-notes"}
@@ -319,7 +365,15 @@ def kb_menu_principal() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📝 Bloc-notes", callback_data="menu:blocnotes"),
             InlineKeyboardButton("🚀 Projets",    callback_data="menu:projets"),
         ],
+        [InlineKeyboardButton("📅 Mon planning",    callback_data="menu:planning")],
         [InlineKeyboardButton("⚙️ Réglages météo", callback_data="menu:meteo")],
+    ])
+
+def kb_planning_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📤 Uploader planning",  callback_data="planning:upload")],
+        [InlineKeyboardButton("📅 Voir cette semaine", callback_data="planning:voir")],
+        [InlineKeyboardButton("↩️ Retour",             callback_data="menu:accueil")],
     ])
 
 def kb_meteo_settings() -> InlineKeyboardMarkup:
@@ -396,6 +450,61 @@ def save_settings(s: dict) -> None:
         json.dumps(s, ensure_ascii=False, indent=2).encode(),
         DROPBOX_SETTINGS,
         mode=dbx_mod.files.WriteMode.overwrite,
+    )
+
+# ── Planning ──────────────────────────────────────────────────────────────────
+
+def extraire_planning_image(data: bytes) -> dict:
+    import base64, json
+    from openai import OpenAI
+    b64 = base64.b64encode(data).decode()
+    prompt = PROMPT_PLANNING.format(today=datetime.now().strftime("%d/%m/%Y"))
+    r = OpenAI(api_key=OPENAI_API_KEY).chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "high"}},
+        ]}],
+        max_tokens=1000,
+    )
+    text = re.sub(r"```(?:json)?\s*", "", r.choices[0].message.content.strip()).strip("`").strip()
+    return json.loads(text)
+
+def load_planning() -> dict:
+    import json
+    import dropbox as dbx_mod
+    try:
+        _, res = get_dropbox().files_download(DROPBOX_PLANNING)
+        return json.loads(res.content)
+    except dbx_mod.exceptions.ApiError:
+        return {}
+
+def save_planning(days: dict) -> None:
+    import json
+    import dropbox as dbx_mod
+    existing = load_planning()
+    existing.update(days)
+    get_dropbox().files_upload(
+        json.dumps(existing, ensure_ascii=False, indent=2).encode(),
+        DROPBOX_PLANNING,
+        mode=dbx_mod.files.WriteMode.overwrite,
+    )
+
+async def envoyer_rappel_planning(context) -> None:
+    if not TELEGRAM_CHAT_ID:
+        return
+    demain = datetime.now() + timedelta(days=1)
+    key = demain.strftime("%Y-%m-%d")
+    shift = load_planning().get(key)
+    if not shift:
+        return
+    emoji, label = _SHIFTS_FR.get(shift, ("📅", shift))
+    jour = _JOURS_FR[demain.weekday()]
+    date_fmt = demain.strftime("%d/%m")
+    await context.bot.send_message(
+        chat_id=TELEGRAM_CHAT_ID,
+        text=f"📅 *Demain {jour} {date_fmt} :*\n\n{emoji} *{shift}* — {label}",
+        parse_mode="Markdown",
     )
 
 # ── Météo ─────────────────────────────────────────────────────────────────────
@@ -722,7 +831,36 @@ async def traiter_texte(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         log.exception("Erreur texte")
         await msg.edit_text(f"❌ {e}")
 
+async def _traiter_planning_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    msg = await update.message.reply_text("⏳ Extraction du planning…")
+    try:
+        buf = io.BytesIO()
+        await (await update.message.photo[-1].get_file()).download_to_memory(buf)
+        result = extraire_planning_image(buf.getvalue())
+        if "error" in result:
+            await msg.edit_text("❌ Tristan introuvable dans ce screenshot. Vérifie que ta ligne est bien visible.")
+            return
+        days = result.get("days", {})
+        semaine = result.get("week", "?")
+        save_planning(days)
+        lignes = [f"✅ *Planning semaine {semaine} enregistré !*\n"]
+        for d, c in sorted(days.items()):
+            emoji, label = _SHIFTS_FR.get(c, ("📅", c))
+            dt = datetime.strptime(d, "%Y-%m-%d")
+            lignes.append(f"• {_JOURS_FR[dt.weekday()]} {dt.strftime('%d/%m')} : {emoji} *{c}* — {label}")
+        await msg.edit_text("\n".join(lignes), parse_mode="Markdown")
+    except Exception as e:
+        log.exception("Erreur planning photo")
+        await msg.edit_text(f"❌ Erreur extraction planning : {e}")
+
 async def traiter_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if context.user_data.pop("pending_planning_upload", False):
+        await _traiter_planning_photo(update, context)
+        return
+    caption = (update.message.caption or "").strip().lower()
+    if caption.startswith("planning"):
+        await _traiter_planning_photo(update, context)
+        return
     msg = await update.message.reply_text("⏳ Analyse de la photo…")
     try:
         buf = io.BytesIO()
@@ -946,6 +1084,45 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         return
 
+    if data == "menu:planning":
+        await query.edit_message_text(
+            "📅 *Mon planning*\n\nUploade ton screenshot chaque semaine pour recevoir un rappel à 22h la veille de chaque shift.",
+            parse_mode="Markdown",
+            reply_markup=kb_planning_menu(),
+        )
+        return
+
+    if data == "planning:upload":
+        context.user_data["pending_planning_upload"] = True
+        await query.edit_message_text(
+            "📤 Envoie le screenshot de ton planning.\n"
+            "_Tu peux aussi envoyer une photo avec la légende_ `planning` _n'importe quand._",
+            parse_mode="Markdown",
+        )
+        return
+
+    if data == "planning:voir":
+        planning = load_planning()
+        debut = datetime.now() - timedelta(days=datetime.now().weekday())
+        lignes = ["📅 *Semaine en cours :*\n"]
+        trouvé = False
+        for i in range(7):
+            d = (debut + timedelta(days=i)).strftime("%Y-%m-%d")
+            if d in planning:
+                trouvé = True
+                c = planning[d]
+                emoji, label = _SHIFTS_FR.get(c, ("📅", c))
+                dt = datetime.strptime(d, "%Y-%m-%d")
+                lignes.append(f"• {_JOURS_FR[dt.weekday()]} {dt.strftime('%d/%m')} : {emoji} *{c}* — {label}")
+        if not trouvé:
+            lignes.append("_Aucune donnée pour cette semaine._\nUploade ton planning !")
+        await query.edit_message_text(
+            "\n".join(lignes),
+            parse_mode="Markdown",
+            reply_markup=kb_planning_menu(),
+        )
+        return
+
     if data == "menu:accueil":
         await query.edit_message_text(
             "🧠 *Second Cerveau* — Que veux-tu faire ?",
@@ -1020,7 +1197,8 @@ def main() -> None:
         )
         for h in [8, 12, 18, 22]:
             app.job_queue.run_daily(envoyer_recap_matin, time=dt.time(h, 0, tzinfo=paris))
-        log.info("⏰ Météo à %dh, récaps à 8h 12h 18h 22h (Paris)", cfg["heure"])
+        app.job_queue.run_daily(envoyer_rappel_planning, time=dt.time(22, 0, tzinfo=paris))
+        log.info("⏰ Météo à %dh, récaps à 8h 12h 18h 22h, rappel planning à 22h (Paris)", cfg["heure"])
 
     app.add_handler(CommandHandler("start",     cmd_start))
     app.add_handler(CommandHandler("dernieres", cmd_dernieres))
