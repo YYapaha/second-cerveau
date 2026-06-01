@@ -28,9 +28,11 @@ DROPBOX_ROOT      = "/Applications/Joplin"
 DROPBOX_RAW       = "/second_cerveau/raw"
 DROPBOX_BLOCNOTES = f"{DROPBOX_ROOT}/blocnotes.md"
 DROPBOX_TRAVAIL   = f"{DROPBOX_ROOT}/travail.md"
+DROPBOX_PROJET    = f"{DROPBOX_ROOT}/projet.md"
 
 TRIGGERS_TRAVAIL   = {"travail"}
 TRIGGERS_BLOCNOTES = {"blocnote", "bloc-note", "blocnotes", "bloc-notes"}
+TRIGGERS_PROJET    = {"projet", "projets"}
 
 PROMPT_ANALYSE = """Analyse ce contenu et crée une fiche markdown avec EXACTEMENT ce format :
 
@@ -135,7 +137,7 @@ def lister_fiches(n: int = 5) -> list:
     dbx = get_dropbox()
     try:
         res = dbx.files_list_folder(DROPBOX_ROOT)
-        exclure = {"blocnotes.md", "travail.md"}
+        exclure = {"blocnotes.md", "travail.md", "projet.md"}
         fiches = [
             e for e in res.entries
             if isinstance(e, dropbox.files.FileMetadata)
@@ -285,6 +287,7 @@ def _ajouter_ligne(path: str, header: str, contenu: str) -> None:
 
 def ajouter_blocnote(c: str): _ajouter_ligne(DROPBOX_BLOCNOTES, "Bloc-notes", c)
 def ajouter_travail(c: str):  _ajouter_ligne(DROPBOX_TRAVAIL,   "Travail",    c)
+def ajouter_projet(c: str):   _ajouter_ligne(DROPBOX_PROJET,    "Projets",    c)
 
 def supprimer_taches(path: str, indices: set) -> int:
     import dropbox as dbx_mod
@@ -306,8 +309,13 @@ def supprimer_taches(path: str, indices: set) -> int:
 
 def kb_menu_principal() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📄 Dernières fiches", callback_data="menu:dernieres")],
+        [InlineKeyboardButton("📄 Dernières fiches",  callback_data="menu:dernieres")],
         [InlineKeyboardButton("✏️ Modifier une fiche", callback_data="menu:modifier")],
+        [
+            InlineKeyboardButton("💼 Travail",    callback_data="menu:travail"),
+            InlineKeyboardButton("📝 Bloc-notes", callback_data="menu:blocnotes"),
+            InlineKeyboardButton("🚀 Projets",    callback_data="menu:projets"),
+        ],
     ])
 
 def kb_apres_capture(filename: str) -> InlineKeyboardMarkup:
@@ -347,19 +355,112 @@ def kb_liste_fiches(fiches: list, prefix: str = "view") -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(boutons)
 
+# ── Météo ─────────────────────────────────────────────────────────────────────
+
+_WMO_FR = {
+    0: ("☀️", "Ciel dégagé"),
+    1: ("🌤️", "Peu nuageux"),
+    2: ("⛅", "Partiellement nuageux"),
+    3: ("☁️", "Couvert"),
+    45: ("🌫️", "Brouillard"),
+    48: ("🌫️", "Brouillard givrant"),
+    51: ("🌦️", "Bruine légère"),
+    53: ("🌦️", "Bruine modérée"),
+    55: ("🌧️", "Bruine dense"),
+    61: ("🌧️", "Pluie légère"),
+    63: ("🌧️", "Pluie modérée"),
+    65: ("🌧️", "Pluie forte"),
+    71: ("🌨️", "Neige légère"),
+    73: ("🌨️", "Neige modérée"),
+    75: ("❄️", "Neige forte"),
+    77: ("🌨️", "Grains de neige"),
+    80: ("🌦️", "Averses légères"),
+    81: ("🌧️", "Averses modérées"),
+    82: ("⛈️", "Averses fortes"),
+    85: ("🌨️", "Averses de neige"),
+    86: ("❄️", "Averses de neige fortes"),
+    95: ("⛈️", "Orage"),
+    96: ("⛈️", "Orage avec grêle"),
+    99: ("⛈️", "Orage violent avec grêle"),
+}
+
+def get_meteo_sierre() -> str:
+    import requests
+    url = (
+        "https://api.open-meteo.com/v1/forecast"
+        "?latitude=46.29&longitude=7.54"
+        "&daily=weathercode,temperature_2m_max,temperature_2m_min,"
+        "precipitation_sum,windspeed_10m_max,uv_index_max"
+        "&current_weather=true&timezone=Europe%2FParis"
+    )
+    r = requests.get(url, timeout=10)
+    r.raise_for_status()
+    d = r.json()
+    cur = d["current_weather"]
+    day = {k: v[0] for k, v in d["daily"].items()}
+
+    code = int(day["weathercode"])
+    emoji, desc = _WMO_FR.get(code, ("🌡️", f"Code {code}"))
+    t_cur  = cur["temperature"]
+    t_max  = day["temperature_2m_max"]
+    t_min  = day["temperature_2m_min"]
+    pluie  = day["precipitation_sum"]
+    vent   = day["windspeed_10m_max"]
+    uv     = day["uv_index_max"]
+
+    lignes = [
+        f"🏔️ *Météo Sierre — {datetime.now().strftime('%d/%m/%Y')}*\n",
+        f"{emoji} {desc}",
+        f"🌡️ Maintenant : *{t_cur}°C*  •  Min {t_min}°C / Max {t_max}°C",
+    ]
+    if pluie > 0:
+        lignes.append(f"🌧️ Précipitations : *{pluie} mm*")
+    lignes.append(f"💨 Vent max : {vent} km/h")
+    if uv >= 3:
+        lignes.append(f"🕶️ UV : {uv}")
+    return "\n".join(lignes)
+
+async def envoyer_meteo_matin(context) -> None:
+    if not TELEGRAM_CHAT_ID:
+        return
+    try:
+        texte = get_meteo_sierre()
+    except Exception as e:
+        log.warning("Erreur météo : %s", e)
+        texte = "🌡️ Météo indisponible ce matin."
+    await context.bot.send_message(
+        chat_id=TELEGRAM_CHAT_ID,
+        text=texte,
+        parse_mode="Markdown",
+    )
+
 # ── Recap scheduler ───────────────────────────────────────────────────────────
 
 async def envoyer_recap_matin(context) -> None:
     if not TELEGRAM_CHAT_ID:
         return
+    from zoneinfo import ZoneInfo
+    h = datetime.now(ZoneInfo("Europe/Paris")).hour
+    if 5 <= h < 12:
+        salut = "☀️ *Bon matin !*"
+    elif 12 <= h < 18:
+        salut = "🌤️ *Bon après-midi !*"
+    elif 18 <= h < 22:
+        salut = "🌆 *Bonsoir !*"
+    else:
+        salut = "🌙 *Bonne nuit !*"
+
     travail   = lire_fichier_dropbox(DROPBOX_TRAVAIL).splitlines()
     blocnotes = lire_fichier_dropbox(DROPBOX_BLOCNOTES).splitlines()
-    parties = ["☀️ *Bon matin !*\n"]
+    projets   = lire_fichier_dropbox(DROPBOX_PROJET).splitlines()
+    parties = [salut + "\n"]
     if travail:
         parties.append("💼 *Travail :*\n" + "\n".join(f"  T{i+1} {t}" for i, t in enumerate(travail)))
     if blocnotes:
         parties.append("📝 *Bloc-notes :*\n" + "\n".join(f"  B{i+1} {b}" for i, b in enumerate(blocnotes)))
-    if not travail and not blocnotes:
+    if projets:
+        parties.append("🚀 *Projets :*\n" + "\n".join(f"  P{i+1} {p}" for i, p in enumerate(projets)))
+    if not travail and not blocnotes and not projets:
         parties.append("Aucune tâche en attente. Belle journée !")
     await context.bot.send_message(
         chat_id=TELEGRAM_CHAT_ID,
@@ -373,7 +474,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "🧠 *Second Cerveau* — je capture et organise tes connaissances.\n\n"
         "Envoie-moi une URL, un texte, une photo, un PDF ou un vocal.\n"
-        "Tu peux aussi préfixer par *travail* ou *blocnote*.\n\n"
+        "Préfixe par *travail*, *blocnote* ou *projet* pour ajouter directement.\n\n"
         "Que veux-tu faire ?",
         parse_mode="Markdown",
         reply_markup=kb_menu_principal(),
@@ -413,11 +514,21 @@ async def cmd_blocnotes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     lignes.append("\n_Tape_ `/done B1 B3` _pour cocher des notes_")
     await update.message.reply_text("\n".join(lignes), parse_mode="Markdown")
 
+async def cmd_projet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    notes = lire_fichier_dropbox(DROPBOX_PROJET).splitlines()
+    if not notes:
+        await update.message.reply_text("🚀 Aucun projet en cours !")
+        return
+    lignes = ["🚀 *Projets en cours :*\n"] + [f"  P{i+1} {n}" for i, n in enumerate(notes)]
+    lignes.append("\n_Tape_ `/done P1 P3` _pour cocher des projets_")
+    await update.message.reply_text("\n".join(lignes), parse_mode="Markdown")
+
 async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     args = context.args
     if not args:
         travail   = lire_fichier_dropbox(DROPBOX_TRAVAIL).splitlines()
         blocnotes = lire_fichier_dropbox(DROPBOX_BLOCNOTES).splitlines()
+        projets   = lire_fichier_dropbox(DROPBOX_PROJET).splitlines()
         lignes = []
         if travail:
             lignes.append("💼 *Travail :*")
@@ -425,27 +536,32 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if blocnotes:
             lignes.append("\n📝 *Bloc-notes :*")
             lignes += [f"  B{i+1} {b}" for i, b in enumerate(blocnotes)]
+        if projets:
+            lignes.append("\n🚀 *Projets :*")
+            lignes += [f"  P{i+1} {p}" for i, p in enumerate(projets)]
         if not lignes:
             await update.message.reply_text("✅ Aucune tâche en attente !")
             return
-        lignes.append("\n_Réponds_ `/done T1 B2` _pour cocher_")
+        lignes.append("\n_Réponds_ `/done T1 B2 P3` _pour cocher_")
         await update.message.reply_text("\n".join(lignes), parse_mode="Markdown")
         return
-    t_idx, b_idx = set(), set()
+    t_idx, b_idx, p_idx = set(), set(), set()
     for a in args:
         a = a.upper()
         try:
-            if a.startswith("T"): t_idx.add(int(a[1:]))
+            if a.startswith("T"):   t_idx.add(int(a[1:]))
             elif a.startswith("B"): b_idx.add(int(a[1:]))
+            elif a.startswith("P"): p_idx.add(int(a[1:]))
         except ValueError:
             pass
-    if not t_idx and not b_idx:
-        await update.message.reply_text("❓ Format : `/done T1 T3 B2`", parse_mode="Markdown")
+    if not t_idx and not b_idx and not p_idx:
+        await update.message.reply_text("❓ Format : `/done T1 T3 B2 P1`", parse_mode="Markdown")
         return
     msg = await update.message.reply_text("⏳ Mise à jour…")
     total = 0
-    if t_idx: total += supprimer_taches(DROPBOX_TRAVAIL, t_idx)
+    if t_idx: total += supprimer_taches(DROPBOX_TRAVAIL,   t_idx)
     if b_idx: total += supprimer_taches(DROPBOX_BLOCNOTES, b_idx)
+    if p_idx: total += supprimer_taches(DROPBOX_PROJET,    p_idx)
     await msg.edit_text(f"✅ {total} tâche(s) cochée(s) !")
 
 async def cmd_monid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -492,6 +608,15 @@ async def traiter_texte(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             return
         ajouter_blocnote(contenu)
         await update.message.reply_text(f"✅ *Bloc-notes ajouté :*\n`- {contenu}`", parse_mode="Markdown")
+        return
+
+    if premier_mot in TRIGGERS_PROJET:
+        contenu = texte[len(premier_mot):].strip()
+        if not contenu:
+            await update.message.reply_text("🚀 Écris quelque chose après `projet` !")
+            return
+        ajouter_projet(contenu)
+        await update.message.reply_text(f"✅ *Projet ajouté :*\n`- {contenu}`", parse_mode="Markdown")
         return
 
     # ── Capture normale ──
@@ -563,6 +688,10 @@ async def traiter_vocal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             contenu = transcription[len(premier_mot):].strip()
             ajouter_blocnote(contenu)
             await msg.edit_text(f"✅ *Bloc-notes :*\n`- {contenu}`", parse_mode="Markdown")
+        elif premier_mot in TRIGGERS_PROJET:
+            contenu = transcription[len(premier_mot):].strip()
+            ajouter_projet(contenu)
+            await msg.edit_text(f"✅ *Projet ajouté :*\n`- {contenu}`", parse_mode="Markdown")
         else:
             fiche_md = analyser_contenu(transcription, "telegram-vocal")
             path = uploader_fiche(fiche_md)
@@ -626,6 +755,33 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             parse_mode="Markdown",
             reply_markup=kb_liste_fiches(fiches, prefix="edit_fiche"),
         )
+        return
+
+    if data == "menu:travail":
+        taches = lire_fichier_dropbox(DROPBOX_TRAVAIL).splitlines()
+        if not taches:
+            await query.edit_message_text("💼 Aucune tâche travail en cours !", reply_markup=kb_menu_principal())
+        else:
+            lignes = ["💼 *Tâches travail :*\n"] + [f"  T{i+1} {t}" for i, t in enumerate(taches)]
+            await query.edit_message_text("\n".join(lignes), parse_mode="Markdown", reply_markup=kb_menu_principal())
+        return
+
+    if data == "menu:blocnotes":
+        notes = lire_fichier_dropbox(DROPBOX_BLOCNOTES).splitlines()
+        if not notes:
+            await query.edit_message_text("📝 Bloc-notes vide !", reply_markup=kb_menu_principal())
+        else:
+            lignes = ["📝 *Bloc-notes :*\n"] + [f"  B{i+1} {n}" for i, n in enumerate(notes)]
+            await query.edit_message_text("\n".join(lignes), parse_mode="Markdown", reply_markup=kb_menu_principal())
+        return
+
+    if data == "menu:projets":
+        notes = lire_fichier_dropbox(DROPBOX_PROJET).splitlines()
+        if not notes:
+            await query.edit_message_text("🚀 Aucun projet en cours !", reply_markup=kb_menu_principal())
+        else:
+            lignes = ["🚀 *Projets en cours :*\n"] + [f"  P{i+1} {n}" for i, n in enumerate(notes)]
+            await query.edit_message_text("\n".join(lignes), parse_mode="Markdown", reply_markup=kb_menu_principal())
         return
 
     if data.startswith("edit_fiche:"):
@@ -693,10 +849,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     if data.startswith("edit_title:"):
         filename = data[len("edit_title:"):]
+        path = f"{DROPBOX_ROOT}/{filename}"
+        titre_actuel = extraire_champ(telecharger_fiche(path), "TITRE")
         context.user_data["pending_edit"] = {"filename": filename, "type": "title"}
         await query.edit_message_text(
-            f"✏️ Envoie le nouveau titre pour `{filename}`\n"
-            "_3 mots maximum, très descriptif_",
+            f"✏️ *Titre actuel :*\n`{titre_actuel}`\n\n"
+            "Envoie le nouveau titre _(3 mots max, très descriptif)_ :",
             parse_mode="Markdown",
         )
         return
@@ -713,19 +871,22 @@ def main() -> None:
 
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # Scheduler 8h 12h 18h 22h
+    # Schedulers
     if TELEGRAM_CHAT_ID and app.job_queue:
         import datetime as dt
         from zoneinfo import ZoneInfo
         paris = ZoneInfo("Europe/Paris")
+        app.job_queue.run_daily(envoyer_meteo_matin, time=dt.time(7, 0, tzinfo=paris))
         for h in [8, 12, 18, 22]:
             app.job_queue.run_daily(envoyer_recap_matin, time=dt.time(h, 0, tzinfo=paris))
-        log.info("⏰ Récaps à 8h 12h 18h 22h (Paris)")
+        log.info("⏰ Météo à 7h, récaps à 8h 12h 18h 22h (Paris)")
 
     app.add_handler(CommandHandler("start",     cmd_start))
     app.add_handler(CommandHandler("dernieres", cmd_dernieres))
     app.add_handler(CommandHandler("travail",   cmd_travail))
     app.add_handler(CommandHandler("blocnotes", cmd_blocnotes))
+    app.add_handler(CommandHandler("projet",    cmd_projet))
+    app.add_handler(CommandHandler("projets",   cmd_projet))
     app.add_handler(CommandHandler("done",      cmd_done))
     app.add_handler(CommandHandler("monid",     cmd_monid))
     app.add_handler(CallbackQueryHandler(callback_handler))
