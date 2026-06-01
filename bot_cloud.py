@@ -403,6 +403,30 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await msg.edit_text(f"✅ {total} tâche(s) cochée(s) comme faite(s) !")
 
 
+async def cmd_travail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    taches = lire_fichier_dropbox(DROPBOX_TRAVAIL).splitlines()
+    if not taches:
+        await update.message.reply_text("💼 Aucune tâche travail en cours !")
+        return
+    lignes = ["💼 *Tâches travail :*\n"]
+    for i, t in enumerate(taches, 1):
+        lignes.append(f"  T{i} {t}")
+    lignes.append("\n_Tape_ `/done T1 T3` _pour cocher des tâches_")
+    await update.message.reply_text("\n".join(lignes), parse_mode="Markdown")
+
+
+async def cmd_blocnotes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    notes = lire_fichier_dropbox(DROPBOX_BLOCNOTES).splitlines()
+    if not notes:
+        await update.message.reply_text("📝 Bloc-notes vide !")
+        return
+    lignes = ["📝 *Bloc-notes :*\n"]
+    for i, n in enumerate(notes, 1):
+        lignes.append(f"  B{i} {n}")
+    lignes.append("\n_Tape_ `/done B1 B3` _pour cocher des notes_")
+    await update.message.reply_text("\n".join(lignes), parse_mode="Markdown")
+
+
 async def cmd_monid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     await update.message.reply_text(
@@ -630,6 +654,8 @@ def main() -> None:
             )
         log.info("⏰ Récaps programmés à 8h, 12h, 18h, 22h (Paris)")
     app.add_handler(CommandHandler("done", cmd_done))
+    app.add_handler(CommandHandler("travail", cmd_travail))
+    app.add_handler(CommandHandler("blocnotes", cmd_blocnotes))
     app.add_handler(CommandHandler("monid", cmd_monid))
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
