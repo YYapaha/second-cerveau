@@ -54,30 +54,31 @@ _JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Diman
 
 PROMPT_PLANNING = """Tu analyses un screenshot de planning Excel IKEA.
 
-Trouve la ligne de "Tristan Cailloux" (ou juste "Tristan").
-Extrait le planning pour chaque colonne de jour visible.
+== ÉTAPE 1 : Localise la ligne de Tristan ==
+Dans la colonne B (noms), cherche la cellule qui contient exactement "Tristan Cailloux".
+Sa ligne dans la section "Sales" contient "Shopkeeper HFB 01/02/03" en colonne A.
+Les lignes voisines sont d'autres shopkeepers (Nora Benlahmr, Tania Pereira, Ana Ferreira, Kévin Palau) — NE LIS PAS ces lignes.
 
-La ligne "Date" indique le numéro du jour du mois.
-La ligne "Day" indique MON, TUE, WED, THU, FRI, SAT ou SUN.
-La ligne "Week number" indique le numéro de semaine.
+== ÉTAPE 2 : Lis les en-têtes ==
+- Ligne "Week number" → numéro de semaine
+- Ligne "Day" → MON, TUE, WED, THU, FRI, SAT, SUN pour chaque colonne
+- Ligne "Date" → numéro du jour du mois pour chaque colonne
 
-Aujourd'hui c'est le {today}. Utilise ça pour déduire le mois et l'année exacts.
+Aujourd'hui c'est le {today}. Déduis le mois et l'année exacts à partir de là.
 
-Normalise les codes de shift :
-- O.V / OV → OV
-- F.V / FV → FV
-- D. AM / D.AM → DAM
-- S. AM / S.AM → SAM
-- D. PM / D.PM → DPM
-- S. PM / S.PM → SPM
-- O Log → OLOG
-- S. O Log / S.O Log → SOLOG
-- HOL, EXT, OFF, AM, PM : inchangés
+== ÉTAPE 3 : Extrait les shifts de LA LIGNE DE TRISTAN uniquement ==
+Pour chaque colonne jour visible, lis la cellule dans la ligne de Tristan.
 
+Normalise les codes :
+O.V/OV→OV | F.V/FV→FV | D.AM/D. AM→DAM | S.AM/S. AM→SAM
+D.PM/D. PM→DPM | S.PM/S. PM→SPM | O Log→OLOG | S.O Log→SOLOG
+HOL, EXT, OFF, AM, PM : inchangés. Case vide → null (ne pas inclure).
+
+== Réponse ==
 Réponds UNIQUEMENT avec un JSON valide (sans bloc markdown) :
-{{"week": <numéro_semaine>, "days": {{"YYYY-MM-DD": "CODE", ...}}}}
+{{"week": <semaine>, "tristan_row_raw": "<ce que tu lis mot pour mot dans la ligne de Tristan>", "days": {{"YYYY-MM-DD": "CODE", ...}}}}
 
-Si Tristan est absent du screenshot : {{"error": "not_found"}}"""
+Si Tristan est absent : {{"error": "not_found"}}"""
 
 TRIGGERS_TRAVAIL   = {"travail"}
 TRIGGERS_BLOCNOTES = {"blocnote", "bloc-note", "blocnotes", "bloc-notes"}
@@ -374,6 +375,13 @@ def kb_planning_menu() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("📤 Uploader planning",  callback_data="planning:upload")],
         [InlineKeyboardButton("📅 Voir cette semaine", callback_data="planning:voir")],
         [InlineKeyboardButton("↩️ Retour",             callback_data="menu:accueil")],
+    ])
+
+def kb_planning_confirm() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Confirmer et enregistrer", callback_data="planning:confirm")],
+        [InlineKeyboardButton("🔄 Relancer l'extraction",   callback_data="planning:retry")],
+        [InlineKeyboardButton("❌ Annuler",                  callback_data="planning:cancel")],
     ])
 
 def kb_meteo_settings() -> InlineKeyboardMarkup:
@@ -831,27 +839,38 @@ async def traiter_texte(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         log.exception("Erreur texte")
         await msg.edit_text(f"❌ {e}")
 
-async def _traiter_planning_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    msg = await update.message.reply_text("⏳ Extraction du planning…")
+async def _traiter_planning_bytes(update: Update, context: ContextTypes.DEFAULT_TYPE, data: bytes) -> None:
+    msg = await update.message.reply_text("⏳ Extraction du planning via GPT-4o…")
     try:
-        buf = io.BytesIO()
-        await (await update.message.photo[-1].get_file()).download_to_memory(buf)
-        result = extraire_planning_image(buf.getvalue())
+        result = extraire_planning_image(data)
         if "error" in result:
-            await msg.edit_text("❌ Tristan introuvable dans ce screenshot. Vérifie que ta ligne est bien visible.")
+            await msg.edit_text(
+                "❌ Tristan introuvable dans ce screenshot.\n"
+                "Vérifie que ta ligne *Tristan Cailloux* est bien visible, puis renvoie.",
+                parse_mode="Markdown",
+            )
             return
-        days = result.get("days", {})
+        days = {k: v for k, v in result.get("days", {}).items() if v}
         semaine = result.get("week", "?")
-        save_planning(days)
-        lignes = [f"✅ *Planning semaine {semaine} enregistré !*\n"]
+        raw = result.get("tristan_row_raw", "")
+        context.user_data["pending_planning_data"] = {"week": semaine, "days": days}
+        lignes = [f"📋 *Vérifie le planning semaine {semaine} :*\n"]
         for d, c in sorted(days.items()):
             emoji, label = _SHIFTS_FR.get(c, ("📅", c))
             dt = datetime.strptime(d, "%Y-%m-%d")
             lignes.append(f"• {_JOURS_FR[dt.weekday()]} {dt.strftime('%d/%m')} : {emoji} *{c}* — {label}")
-        await msg.edit_text("\n".join(lignes), parse_mode="Markdown")
+        if raw:
+            lignes.append(f"\n_Ligne lue par GPT-4o :_ `{raw[:120]}`")
+        lignes.append("\n_Est-ce correct ?_")
+        await msg.edit_text("\n".join(lignes), parse_mode="Markdown", reply_markup=kb_planning_confirm())
     except Exception as e:
         log.exception("Erreur planning photo")
         await msg.edit_text(f"❌ Erreur extraction planning : {e}")
+
+async def _traiter_planning_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    buf = io.BytesIO()
+    await (await update.message.photo[-1].get_file()).download_to_memory(buf)
+    await _traiter_planning_bytes(update, context, buf.getvalue())
 
 async def traiter_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if context.user_data.pop("pending_planning_upload", False):
@@ -877,12 +896,23 @@ async def traiter_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await msg.edit_text(f"❌ {e}")
 
 async def traiter_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    doc = update.message.document
+    ext = os.path.splitext(doc.file_name)[1].lower()
+    caption = (update.message.caption or "").strip().lower()
+
+    # Fichier image envoyé comme document (non compressé) → planning
+    if ext in {".jpg", ".jpeg", ".png"} and (
+        context.user_data.pop("pending_planning_upload", False) or caption.startswith("planning")
+    ):
+        buf = io.BytesIO()
+        await (await doc.get_file()).download_to_memory(buf)
+        await _traiter_planning_bytes(update, context, buf.getvalue())
+        return
+
     msg = await update.message.reply_text("⏳ Extraction du document…")
     try:
-        doc = update.message.document
-        ext = os.path.splitext(doc.file_name)[1].lower()
         if ext not in {".pdf", ".txt", ".md"}:
-            await msg.edit_text("❌ Format non supporté. Envoie un PDF ou un fichier texte.")
+            await msg.edit_text("❌ Format non supporté. Envoie un PDF, un fichier texte, ou une image planning.")
             return
         buf = io.BytesIO()
         await (await doc.get_file()).download_to_memory(buf)
@@ -1095,8 +1125,36 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if data == "planning:upload":
         context.user_data["pending_planning_upload"] = True
         await query.edit_message_text(
-            "📤 Envoie le screenshot de ton planning.\n"
+            "📤 Envoie le screenshot de ton planning.\n\n"
+            "_💡 Pour une meilleure qualité, envoie-le comme_ *Fichier* _(pas comme photo) — Telegram ne le compressera pas._\n"
             "_Tu peux aussi envoyer une photo avec la légende_ `planning` _n'importe quand._",
+            parse_mode="Markdown",
+        )
+        return
+
+    if data == "planning:confirm":
+        pending = context.user_data.pop("pending_planning_data", None)
+        if not pending:
+            await query.edit_message_text("❌ Session expirée. Renvoie le screenshot.")
+            return
+        save_planning(pending["days"])
+        await query.edit_message_text(
+            f"✅ *Planning semaine {pending['week']} enregistré !*\n_{len(pending['days'])} jours sauvegardés._",
+            parse_mode="Markdown",
+            reply_markup=kb_planning_menu(),
+        )
+        return
+
+    if data == "planning:cancel":
+        context.user_data.pop("pending_planning_data", None)
+        await query.edit_message_text("❌ Extraction annulée.", reply_markup=kb_planning_menu())
+        return
+
+    if data == "planning:retry":
+        context.user_data.pop("pending_planning_data", None)
+        context.user_data["pending_planning_upload"] = True
+        await query.edit_message_text(
+            "🔄 Renvoie le screenshot. *Essaie en l'envoyant comme Fichier* pour une meilleure qualité.",
             parse_mode="Markdown",
         )
         return
