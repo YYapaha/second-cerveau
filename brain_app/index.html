@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; connect-src http://127.0.0.1:7842">
+  <title>Second Cerveau</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Fond : blobs aurora + dot grid -->
+  <div class="aurora">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+  </div>
+  <div class="dot-grid"></div>
+
+  <!-- Contenu principal -->
+  <div class="app" id="app">
+
+    <header class="app-header">
+      <span class="logo">🧠 Second Cerveau</span>
+      <span class="status-pill" id="status-pill">chargement…</span>
+    </header>
+
+    <!-- À la une -->
+    <section class="section" id="section-featured">
+      <h2 class="section-label">⭐ À la une</h2>
+      <div class="cards-row" id="featured-cards"></div>
+    </section>
+
+    <!-- Barre de chat -->
+    <div class="chat-bar">
+      <input
+        type="text"
+        id="chat-input"
+        class="chat-input"
+        placeholder="🔍 Pose une question à tes notes…"
+        autocomplete="off"
+      />
+      <div id="chat-response" class="chat-response hidden"></div>
+    </div>
+
+    <!-- Sections par domaine -->
+    <div id="domains-container"></div>
+
+  </div>
+
+  <script type="module" src="renderer.js"></script>
+</body>
+</html>
