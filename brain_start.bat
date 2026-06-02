@@ -3,7 +3,6 @@ title Second Cerveau — Brain System
 cd /d "%~dp0"
 
 echo [1/3] Agent de sync...
-echo    (Premier lancement: attendre que l'agent ait fini avant d'utiliser l'app)
 start "Brain Agent" /MIN python brain_agent.py
 
 echo [2/3] Serveur API (attente 10s)...
