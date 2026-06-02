@@ -145,7 +145,11 @@ def raffiner_note(contenu: str, api_key: str) -> dict:
     )
     raw  = r.choices[0].message.content.strip()
     raw  = re.sub(r"```(?:json)?\s*", "", raw).strip("`").strip()
-    data = json.loads(raw)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        log.error("raffiner_note: réponse GPT non parseable : %s — %s", raw[:200], e)
+        raise
     if data.get("domaine") not in DOMAINS:
         data["domaine"] = "Projets perso"
     return data
@@ -172,7 +176,7 @@ def embedding_to_bytes(v: np.ndarray) -> bytes:
 
 
 def bytes_to_embedding(b: bytes) -> np.ndarray:
-    return np.frombuffer(b, dtype=np.float32)
+    return np.frombuffer(b, dtype=np.float32).copy()
 
 
 def calculer_score(note: dict, recent_domains: dict) -> float:
@@ -238,7 +242,11 @@ def generer_meta_fiche(notes: list[dict], api_key: str) -> dict:
         max_tokens=500,
     )
     raw  = re.sub(r"```(?:json)?\s*", "", r.choices[0].message.content.strip()).strip("`").strip()
-    data = json.loads(raw)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        log.error("generer_meta_fiche: réponse GPT non parseable : %s — %s", raw[:200], e)
+        raise
     if data.get("domaine") not in DOMAINS:
         data["domaine"] = notes[0].get("domaine", "Projets perso")
     data["sources_ids"] = [n["id"] for n in notes]
