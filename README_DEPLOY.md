@@ -1,78 +1,32 @@
 # Déploiement sur Railway
 
-Le bot Telegram tourne sur Railway 24/7. Les fiches sont sauvegardées dans Dropbox, synchronisées automatiquement sur ton PC.
+Le bot Telegram (`bot_cloud.py`) tourne sur Railway 24/7. Les fiches sont sauvegardées dans Dropbox, synchronisées automatiquement sur le PC et visibles dans Obsidian.
 
 ---
 
-## 1. Créer un token Dropbox
+## Architecture
+
+```
+Telegram (téléphone)
+      │
+      ▼
+Bot Railway — bot_cloud.py
+      │  extraction (Jina / Trafilatura) + analyse GPT-4o-mini
+      ▼
+Dropbox API ──► /second_cerveau/fiches/TYPE/titre.md
+                        │ sync automatique
+                        ▼
+                Dropbox local PC → Obsidian 🧠
+```
+
+---
+
+## 1. Créer un token Dropbox permanent
 
 1. Va sur https://www.dropbox.com/developers/apps
-2. Clique **"Create app"**
-3. Choisis : **Scoped access** → **Full Dropbox**
-4. Donne un nom : `second-cerveau-bot`
-5. Dans l'onglet **Permissions**, active :
-   - `files.content.write`
-   - `files.content.read`
-6. Dans l'onglet **Settings** → **OAuth 2** → **Generated access token** → clique **Generate**
-7. Copie le token (commence par `sl.`)
-
-> ⚠️ Ce token expire après quelques heures. Pour un token permanent, utilise le flux OAuth avec `DROPBOX_APP_KEY` + `DROPBOX_APP_SECRET` + `DROPBOX_REFRESH_TOKEN` (voir section avancée en bas).
-
----
-
-## 2. Déployer sur Railway
-
-### 2.1 Créer le projet
-
-1. Va sur https://railway.app → connecte-toi avec GitHub
-2. **New Project** → **Deploy from GitHub repo**
-3. Sélectionne ton repo `second-cerveau`
-4. Railway détecte automatiquement Python via `railway.json`
-
-### 2.2 Ajouter les variables d'environnement
-
-Dans Railway → ton projet → onglet **Variables**, ajoute :
-
-| Variable | Valeur |
-|---|---|
-| `TELEGRAM_BOT_TOKEN` | ton token BotFather |
-| `GEMINI_API_KEY` | ta clé Gemini |
-| `DROPBOX_ACCESS_TOKEN` | le token généré à l'étape 1 |
-| `ENABLE_WHISPER` | `false` (laisser false sur le plan gratuit) |
-
-### 2.3 Déployer
-
-Railway lance automatiquement le build et démarre `python -X utf8 bot_cloud.py`.
-
-Vérifie les logs dans l'onglet **Deployments** → tu dois voir :
-```
-🤖 Bot Cloud démarré — Dropbox : /second_cerveau/fiches
-```
-
----
-
-## 3. Tester
-
-1. Ouvre Telegram → parle à ton bot
-2. Envoie `/start` → il doit répondre
-3. Envoie une URL → une fiche doit apparaître dans ton Dropbox sous `second_cerveau/fiches/`
-4. Vérifie dans l'app Dropbox sur ton PC que la fiche est synchronisée dans `fiches/`
-
----
-
-## 4. Synchroniser Dropbox → Obsidian
-
-Dans Obsidian, pointe le coffre vers le dossier Dropbox synchronisé :
-```
-C:\Users\<toi>\Dropbox\second_cerveau\fiches\
-```
-Les nouvelles fiches créées par le bot cloud apparaissent automatiquement dans Obsidian dès la synchronisation.
-
----
-
-## 5. Token Dropbox permanent (optionnel)
-
-Si le token `sl.` expire, utilise le flux OAuth permanent :
+2. Clique **"Create app"** → **Scoped access** → **Full Dropbox** → nom : `second-cerveau-bot`
+3. Onglet **Permissions** : activer `files.content.write` et `files.content.read`
+4. Lancer le script OAuth pour obtenir un refresh token permanent :
 
 ```bash
 pip install dropbox
@@ -91,40 +45,85 @@ print("DROPBOX_REFRESH_TOKEN =", result.refresh_token)
 EOF
 ```
 
-Puis dans Railway, remplace `DROPBOX_ACCESS_TOKEN` par trois variables :
-- `DROPBOX_APP_KEY`
-- `DROPBOX_APP_SECRET`
-- `DROPBOX_REFRESH_TOKEN`
+---
+
+## 2. Déployer sur Railway
+
+### 2.1 Créer le projet
+
+1. https://railway.app → connecte-toi avec GitHub
+2. **New Project** → **Deploy from GitHub repo** → sélectionner `second-cerveau`
+3. Railway détecte Python automatiquement via `railway.json`
+
+### 2.2 Variables d'environnement
+
+Dans Railway → ton projet → onglet **Variables** :
+
+| Variable | Description |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | Token BotFather |
+| `TELEGRAM_CHAT_ID` | Ton chat ID Telegram |
+| `OPENAI_API_KEY` | Clé API OpenAI (pour GPT-4o-mini) |
+| `DROPBOX_APP_KEY` | App key Dropbox |
+| `DROPBOX_APP_SECRET` | App secret Dropbox |
+| `DROPBOX_REFRESH_TOKEN` | Refresh token généré à l'étape 1 |
+| `ENABLE_WHISPER` | `false` (laisser false, trop lourd sur le plan gratuit) |
+
+### 2.3 Déployer
+
+Railway lance automatiquement le build et démarre `python -X utf8 bot_cloud.py`.
+
+Vérifie les logs dans **Deployments** → tu dois voir :
+```
+🤖 Bot Cloud démarré
+⏰ Météo à Xh, récaps à 8h 12h 18h 22h (Paris)
+```
 
 ---
 
-## 6. Activer la transcription audio (optionnel)
+## 3. Tester
 
-> ⚠️ Déconseillé sur le plan gratuit Railway (512 Mo RAM, CPU limité).
-
-1. Dans `requirements_railway.txt`, décommenter `openai-whisper>=20250625`
-2. Dans Railway Variables, ajouter `ENABLE_WHISPER=true`
-3. Redéployer
-
-Le modèle Whisper `tiny` (~39 Mo) se télécharge au premier démarrage.
+1. Telegram → `/start` → le bot doit répondre avec le menu
+2. Envoyer une URL → une fiche apparaît dans Dropbox sous `second_cerveau/fiches/`
+3. Menu `/start` → 🌤️ Voir la météo → doit afficher la météo actuelle
+4. Menu `/start` → ⚙️ Réglages météo → tester le changement de ville
 
 ---
 
-## Architecture résumée
+## 4. Redéployer après une modification
 
+Chaque `git push` sur `master` redémarre Railway automatiquement.
+
+```bash
+git add .
+git commit -m "ma modification"
+git push origin master
 ```
-Telegram (téléphone)
-      │  message
-      ▼
-Bot Railway (bot_cloud.py)
-      │  extrait + analyse Gemini
-      ▼
-Dropbox API ──► /second_cerveau/fiches/TYPE/titre.md
-                        │
-                        │ sync automatique
-                        ▼
-                Dropbox local PC
-                        │
-                        ▼
-                  Obsidian 🧠
-```
+
+---
+
+## 5. Activer la transcription audio (optionnel)
+
+> ⚠️ Déconseillé sur le plan gratuit (512 Mo RAM).
+
+1. Dans `requirements_railway.txt`, décommenter `openai-whisper`
+2. Dans Railway Variables : `ENABLE_WHISPER=true`
+3. Redéployer — le modèle Whisper `tiny` (~39 Mo) se télécharge au premier démarrage
+
+---
+
+## Fonctionnalités du bot
+
+| Feature | Déclencheur |
+|---|---|
+| Capture URL | Envoyer un lien |
+| Capture PDF | Envoyer un fichier |
+| Capture image | Envoyer une photo |
+| Capture vocal | Envoyer un vocal |
+| Capture texte | Écrire directement |
+| Note rapide | `blocnote ton texte` |
+| Tâche pro | `travail ta tâche` |
+| Planning | Menu → 📅 Mon planning |
+| Météo à la demande | Menu → 🌤️ Voir la météo |
+| Météo automatique matin | Configurée via ⚙️ Réglages météo |
+| Modifier fiche (titre/tags) | Menu après chaque capture |

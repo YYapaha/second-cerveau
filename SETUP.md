@@ -1,16 +1,18 @@
 # Second Cerveau — Guide de setup complet
 
-> Système de capture automatique de connaissances. Tu tombes sur un truc intéressant → tu l'envoies → une fiche Markdown structurée est créée automatiquement.
+> Système de capture automatique de connaissances. Tu tombes sur un truc intéressant → tu l'envoies au bot Telegram (ou tu lances `capture.py`) → une fiche Markdown structurée est créée automatiquement dans Dropbox → visible dans Obsidian.
 
 ---
 
 ## Ce que tu vas avoir à la fin
 
-- Un script qui capture n'importe quoi (URL, texte, PDF, image, vocal)
-- Un bot Telegram pour capturer depuis ton téléphone
+- Un **bot Telegram 24/7 sur Railway** qui capture tout depuis ton téléphone
+- Un script local `capture.py` pour capturer depuis le PC
 - Un dossier `inbox/` magique : déposer un fichier = le capturer automatiquement
-- Tes fiches organisées par type dans Obsidian
-- **Coût : 0€** (Gemini API gratuit, tout le reste est local ou open source)
+- Tes fiches organisées dans Obsidian, synchronisées via Dropbox
+- Météo automatique chaque matin dans Telegram
+
+**Coût estimé :** Railway gratuit (jusqu'à 500h/mois), OpenAI ~0,01€ par fiche.
 
 ---
 
@@ -21,11 +23,11 @@
 | Python | 3.9+ | https://www.python.org/downloads/ |
 | Git | n'importe | https://git-scm.com |
 | Obsidian | n'importe | https://obsidian.md |
-| ffmpeg | n'importe | via `winget install Gyan.FFmpeg` (Windows) |
+| ffmpeg | n'importe | `winget install Gyan.FFmpeg` (Windows) |
 
 ---
 
-## Installation
+## Installation locale (capture depuis le PC)
 
 ### 1. Cloner le repo
 
@@ -40,32 +42,25 @@ cd second-cerveau
 pip install -r requirements.txt
 ```
 
-> Sur Windows, utilise `python -m pip` si `pip` n'est pas reconnu.
+> Sur Windows : `python -m pip install -r requirements.txt`
 
 ### 3. Configurer les clés API
 
-Copie le template et remplis-le :
+Crée un fichier `.env` à la racine :
 
-```bash
-cp .env.example .env   # ou ouvre .env directement
+```env
+OPENAI_API_KEY=ta_cle_ici
+TELEGRAM_BOT_TOKEN=ton_token_ici     # si tu utilises le bot local
+DROPBOX_ACCESS_TOKEN=ton_token_ici   # pour la synchro Dropbox locale
 ```
 
-Contenu de `.env` :
+**Obtenir une clé OpenAI :**
+1. https://platform.openai.com/api-keys
+2. "Create new secret key" → copier
 
-```
-GEMINI_API_KEY=ta_cle_ici
-TELEGRAM_BOT_TOKEN=ton_token_ici   # optionnel
-```
-
-**Obtenir une clé Gemini gratuite :**
-1. Aller sur https://aistudio.google.com/apikey
-2. Se connecter avec un compte Google
-3. Cliquer "Create API key" → copier la clé
-
-**Obtenir un token Telegram (optionnel) :**
-1. Ouvrir Telegram → chercher `@BotFather`
-2. Envoyer `/newbot` → suivre les instructions
-3. Copier le token fourni
+**Obtenir un token Telegram (optionnel pour usage local) :**
+1. Telegram → chercher `@BotFather` → `/newbot`
+2. Copier le token fourni
 
 ### 4. Installer ffmpeg (pour la transcription audio)
 
@@ -73,7 +68,7 @@ TELEGRAM_BOT_TOKEN=ton_token_ici   # optionnel
 ```powershell
 winget install Gyan.FFmpeg
 ```
-Redémarre le terminal après l'installation.
+Redémarre le terminal après.
 
 **Mac :**
 ```bash
@@ -85,22 +80,14 @@ brew install ffmpeg
 sudo apt install ffmpeg
 ```
 
-### 5. Ouvrir Obsidian sur le dossier des fiches
+### 5. Utiliser
 
-1. Ouvrir Obsidian
-2. "Ouvrir un autre coffre" → "Ouvrir un dossier comme coffre"
-3. Sélectionner le dossier `fiches/` dans ce repo
-
----
-
-## Utilisation quotidienne
-
-```bash
+```powershell
 # Capturer une URL
 python -X utf8 capture.py "https://..."
 
 # Capturer un texte brut
-python -X utf8 capture.py "mon idée ou note rapide"
+python -X utf8 capture.py "mon idée"
 
 # Capturer un fichier
 python -X utf8 capture.py --file document.pdf
@@ -108,41 +95,65 @@ python -X utf8 capture.py --file document.pdf
 # Capturer depuis le presse-papier
 python -X utf8 capture.py --clipboard
 
-# Lancer le bot Telegram + watchdog d'un coup (Windows)
-start.bat
-
 # Rechercher dans ses fiches
-python -X utf8 chercher.py "ma question"
-
-# Réorganiser / renommer les fiches existantes
-python -X utf8 reorganiser.py
+python -X utf8 chercher.py "mot-clé"
 ```
+
+### 6. Ouvrir Obsidian sur le dossier des fiches
+
+1. Obsidian → "Ouvrir un autre coffre" → "Ouvrir un dossier comme coffre"
+2. Sélectionner `Dropbox\second_cerveau\fiches\` (ou le dossier `fiches/` local)
 
 ---
 
-## Structure des fiches générées
+## Déploiement du bot sur Railway (production)
 
-Chaque fiche est un `.md` rangé dans `fiches/TYPE/slug_titre.md` :
+> Le bot Railway tourne déjà en production. Cette section est utile si tu dois le reconfigurer ou le redéployer from scratch.
 
-```
-fiches/
-├── Tutoriel/
-├── Note/
-├── Outil/
-├── Recherche/
-├── Code/
-├── Réflexion/
-├── Transcription/
-├── Image/
-└── Divers/
-```
+Voir [README_DEPLOY.md](README_DEPLOY.md) pour le guide complet.
 
-Chaque fiche contient :
+Variables d'environnement à configurer dans Railway :
+
+| Variable | Description |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | Token BotFather |
+| `TELEGRAM_CHAT_ID` | Ton chat ID Telegram |
+| `OPENAI_API_KEY` | Clé API OpenAI |
+| `DROPBOX_APP_KEY` | App key Dropbox |
+| `DROPBOX_APP_SECRET` | App secret Dropbox |
+| `DROPBOX_REFRESH_TOKEN` | Refresh token OAuth Dropbox |
+
+---
+
+## Format des fiches générées
+
+Chaque fiche est un `.md` rangé dans `fiches/TYPE/TAG_titre.md` :
 
 ```markdown
-**SOURCE** · **DATE** · **TAGS** · **TYPE**
-**POURQUOI_GARDER** · **IDEE_PRINCIPALE** · **POINTS_CLES**
-**QUAND_RESSORTIR** · **RESUME_30_SEC** · **RESUME_COMPLET**
+# Titre en 5 à 7 mots
+
+[source]
+
+## Résumé rapide
+…
+
+## Analyse complète
+…
+
+---
+**POURQUOI_GARDER** : …
+**IDEE_PRINCIPALE** : …
+**POINTS_CLES** :
+- Point 1
+- Point 2
+**QUAND_RESSORTIR** : "Quand je ferai X…"
+**TYPE** : Note | Tutoriel | Outil | Réflexion
+**TAGS** : #tag1 #tag2 #tag3
+**DATE** : JJ/MM/AAAA HH:MM
+
+---
+**CONTENU_BRUT** :
+(texte intégral extrait de la page, du PDF ou du fichier — jusqu'à 30 000 caractères)
 ```
 
 ---
@@ -151,11 +162,9 @@ Chaque fiche contient :
 
 | Plugin | Usage |
 |---|---|
-| **Dataview** | Tableau de bord dynamique sur tes fiches |
+| **Dataview** | Tableau de bord dynamique |
 | **QuickAdd** | Créer une note en 2 touches |
 | **Templater** | Templates pour notes manuelles |
-
-**Exemple de requête Dataview** — colle ça dans une note `Index.md` :
 
 ```dataview
 TABLE date, type, tags
@@ -165,50 +174,13 @@ SORT date DESC
 
 ---
 
-## Étape future : héberger le bot Telegram sur Railway
-
-> **Problème actuel :** le bot Telegram (`bot_telegram.py`) doit tourner en permanence sur ton PC pour recevoir les messages. Si le PC s'éteint, le bot ne répond plus.
-
-### Solution : déployer sur Railway (gratuit jusqu'à ~500h/mois)
-
-**Railway** est une plateforme cloud simple — tu pousses ton code, il tourne 24/7 sans que ton PC soit allumé.
-
-#### Étapes prévues
-
-1. **Créer un compte** sur https://railway.app (gratuit, connexion GitHub)
-
-2. **Créer un `Procfile`** à la racine du repo :
-   ```
-   worker: python -X utf8 bot_telegram.py
-   ```
-
-3. **Configurer les variables d'environnement** dans Railway (onglet "Variables") :
-   - `GEMINI_API_KEY` = ta clé
-   - `TELEGRAM_BOT_TOKEN` = ton token
-
-4. **Connecter le repo GitHub** → Railway détecte automatiquement Python et lance le bot
-
-5. **Résultat** : ton bot répond depuis le cloud, PC éteint ou pas
-
-> **Note :** seul `bot_telegram.py` a besoin d'être sur Railway. `capture.py`, `watchdog_capture.py` et Obsidian restent locaux — ils travaillent directement sur tes fichiers.
-
-#### Ce que ça change
-
-| Composant | Local | Railway |
-|---|---|---|
-| `capture.py` | ✅ reste local | — |
-| `watchdog_capture.py` | ✅ reste local | — |
-| Obsidian | ✅ reste local | — |
-| `bot_telegram.py` | ❌ PC doit tourner | ✅ tourne 24/7 |
-
----
-
 ## Dépannage
 
 | Erreur | Solution |
 |---|---|
-| `GEMINI_API_KEY manquante` | Vérifier le fichier `.env` |
-| `[WinError 2]` lors d'un audio | ffmpeg non installé ou non dans le PATH |
-| `FutureWarning google.generativeai` | Utiliser `google-genai` (déjà fait dans ce repo) |
-| Emojis cassés sur Windows | Lancer avec `python -X utf8` ou `start.bat` |
-| Bot Telegram muet | Vérifier que `python bot_telegram.py` tourne dans un terminal |
+| `OPENAI_API_KEY manquante` | Vérifier `.env` |
+| `[WinError 2]` audio | ffmpeg non dans le PATH |
+| Emojis cassés Windows | `python -X utf8 capture.py ...` |
+| Bot muet | Vérifier Railway dashboard → "Active" |
+| Météo indisponible | Logs Railway → onglet Deployments |
+| Ville introuvable | Format `Lyon, FR` ou `Genève, CH` |
