@@ -18,3 +18,16 @@ def test_init_db_creates_tables():
         conn.close()
     finally:
         os.unlink(db_path)
+
+
+def test_get_note_id_is_deterministic():
+    from brain_agent import get_note_id
+    id1 = get_note_id("/Applications/Joplin/NOTE_test.md")
+    id2 = get_note_id("/Applications/Joplin/NOTE_test.md")
+    assert id1 == id2
+    assert len(id1) == 32
+
+
+def test_get_note_id_differs_per_path():
+    from brain_agent import get_note_id
+    assert get_note_id("/a.md") != get_note_id("/b.md")
