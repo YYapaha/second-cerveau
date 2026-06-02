@@ -209,7 +209,7 @@ document.getElementById('chat-input').addEventListener('keydown', async (e) => {
       card.classList.remove('highlighted');
     });
     if (data.sources?.length) {
-      const ids = new Set(data.sources.map(s => s.id));
+      const ids = new Set(data.sources.map(s => String(s.id)));
       document.querySelectorAll('.card').forEach(card => {
         if (ids.has(card.dataset.id)) card.classList.add('highlighted');
       });
