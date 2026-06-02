@@ -122,6 +122,7 @@ API locale minimaliste, consommée uniquement par l'app Electron.
 ### Stack
 
 - **Electron** + **HTML/CSS/JS vanilla** (pas de framework — simplicité et performance)
+- **Anime.js v4** pour toutes les animations (blobs aurora, stagger des cards, particules flottantes, timelines d'entrée)
 - Fenêtre frameless, `alwaysOnTop: false`, positionnée sur l'écran 3 au démarrage
 - Démarrage auto via le dossier Startup Windows (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`)
 
@@ -211,7 +212,7 @@ Chaque matin avec la météo, le bot envoie également l'insight d'une note resu
 ## Dépendances
 
 **Python :** `fastapi`, `uvicorn`, `openai`, `dropbox`, `numpy`, `sqlite3` (stdlib)
-**Node/Electron :** `electron`
+**Node/Electron :** `electron`, `animejs` (v4)
 **Windows :** raccourci `brain_start.bat` dans le dossier Startup
 
 ---
