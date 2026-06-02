@@ -79,15 +79,40 @@ Format exact :
 - Ne pas fusionner des fiches
 - Ne pas inventer du contenu absent de la fiche originale
 
+## Chantier en cours — Ambient Brain Display
+
+Un système "vrai deuxième cerveau" avec interface Electron sur l'écran portrait.
+
+**Spec :** `docs/superpowers/specs/2026-06-02-ambient-brain-display-design.md`
+
+**Plans d'implémentation en 3 parties :**
+
+| Plan | Fichier | Statut |
+|---|---|---|
+| Plan 1 — Data layer | `docs/superpowers/plans/2026-06-02-brain-data-layer.md` | ✅ TERMINÉ (17 tests verts) |
+| Plan 2 — Electron UI | `docs/superpowers/plans/2026-06-02-brain-electron-ui.md` | ⏳ À FAIRE (prochain) |
+| Plan 3 — Intégration bot | `docs/superpowers/plans/2026-06-02-brain-integration.md` | ⏳ À FAIRE (après Plan 2) |
+
+**Pour reprendre :** lire le plan suivant + lancer `/superpowers:subagent-driven-development`
+
+**Nouveaux fichiers créés (Plan 1) :**
+- `brain_agent.py` — agent Python local (sync Dropbox → GPT → SQLite)
+- `brain_server.py` — API FastAPI locale port 7842
+- `brain.db` — base SQLite locale (gitignorée)
+- `brain_start.bat` — lance agent + serveur + Electron
+- `requirements_brain.txt` — dépendances Python brain
+- `tests/test_brain_agent.py` + `tests/test_brain_server.py`
+
 ## Fichiers importants
 
 | Fichier | Rôle |
 |---|---|
 | `bot_cloud.py` | Bot Telegram Railway (production) |
+| `core.py` | Noyau partagé (extraction, analyse GPT, météo, recherche) |
 | `capture.py` | Script de capture local |
 | `chercher.py` | Recherche plein texte dans les fiches |
-| `reorganiser.py` | Renommage / réorganisation des fiches |
-| `watchdog_capture.py` | Surveillance du dossier inbox/ |
+| `brain_agent.py` | Agent Ambient Brain (nouveau) |
+| `brain_server.py` | API FastAPI locale (nouveau) |
 | `blocnotes.md` (Dropbox) | Notes rapides |
 | `travail.md` (Dropbox) | Tâches professionnelles |
 
