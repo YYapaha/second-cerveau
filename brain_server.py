@@ -1,5 +1,6 @@
 """brain_server.py — API FastAPI locale pour l'Electron Brain App."""
 import os, json, sqlite3
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -7,10 +8,17 @@ import numpy as np
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
+from brain_agent import init_db as _init_db
 
 DB_PATH = Path(__file__).parent / "brain.db"
 
-app = FastAPI(title="Brain Server", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app):
+    _init_db()  # Crée les tables si elles n'existent pas encore
+    yield
+
+app = FastAPI(title="Brain Server", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -65,7 +73,7 @@ def get_notes(
 def get_a_la_une(limit: int = Query(5, ge=1, le=10)):
     conn = get_db()
     rows = conn.execute(
-        f"SELECT {_SELECT_FIELDS} FROM notes ORDER BY score_pertinence DESC LIMIT ?",
+        f"SELECT {_SELECT_FIELDS} FROM notes WHERE est_meta_fiche = 0 ORDER BY score_pertinence DESC LIMIT ?",
         (limit,),
     ).fetchall()
     conn.close()
@@ -79,6 +87,8 @@ def chat(body: dict):
         return {"reponse": "", "sources": []}
 
     api_key   = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
+        return {"reponse": "❌ OPENAI_API_KEY manquante — configure la variable d'environnement.", "sources": []}
     client_ai = OpenAI(api_key=api_key)
 
     emb_resp = client_ai.embeddings.create(

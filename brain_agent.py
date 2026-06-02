@@ -279,106 +279,106 @@ def run_agent(db_path: str | Path = DB_PATH) -> None:
 
     init_db(db_path)
     conn = get_db(db_path)
+    try:
+        # 1. Sync Dropbox
+        fiches_raw = sync_from_dropbox()
+        if not fiches_raw:
+            log.warning("Aucune fiche récupérée.")
+            return
 
-    # 1. Sync Dropbox
-    fiches_raw = sync_from_dropbox()
-    if not fiches_raw:
-        log.warning("Aucune fiche récupérée.")
-        conn.close()
-        return
+        # 2. Raffiner les fiches non encore traitées
+        for fiche in fiches_raw:
+            note_id  = get_note_id(fiche["path"])
+            existing = conn.execute(
+                "SELECT date_traitement FROM notes WHERE id = ?", (note_id,)
+            ).fetchone()
+            if existing and existing["date_traitement"] == fiche["modified"]:
+                continue  # Déjà à jour
+            log.info("Traitement : %s", fiche["name"])
+            try:
+                import re as _re
+                refined   = raffiner_note(fiche["content"], api_key)
+                emb_txt   = f"{refined['titre_court']} {refined['insight_cle']} {refined['resume']}"
+                embedding = vectoriser(emb_txt, api_key)
+                tag_match = _re.search(r"\*\*TAGS\*\*\s*:\s*(.+)", fiche["content"])
+                tags      = tag_match.group(1).strip() if tag_match else ""
+                conn.execute("""
+                    INSERT OR REPLACE INTO notes
+                      (id, dropbox_path, titre_court, insight_cle, resume, domaine,
+                       tags, date_capture, date_traitement, score_pertinence,
+                       est_meta_fiche, sources_ids, embedding)
+                    VALUES (?,?,?,?,?,?,?,?,?,0.0,0,NULL,?)
+                """, (
+                    note_id, fiche["path"],
+                    refined["titre_court"], refined["insight_cle"], refined["resume"], refined["domaine"],
+                    tags, fiche["modified"], fiche["modified"],
+                    embedding_to_bytes(embedding),
+                ))
+                conn.commit()
+            except Exception as e:
+                log.error("Erreur %s : %s", fiche["name"], e)
 
-    # 2. Raffiner les fiches non encore traitées
-    for fiche in fiches_raw:
-        note_id  = get_note_id(fiche["path"])
-        existing = conn.execute(
-            "SELECT date_traitement FROM notes WHERE id = ?", (note_id,)
-        ).fetchone()
-        if existing and existing["date_traitement"] == fiche["modified"]:
-            continue  # Déjà à jour
-        log.info("Traitement : %s", fiche["name"])
-        try:
-            import re as _re
-            refined   = raffiner_note(fiche["content"], api_key)
-            emb_txt   = f"{refined['titre_court']} {refined['insight_cle']} {refined['resume']}"
-            embedding = vectoriser(emb_txt, api_key)
-            tag_match = _re.search(r"\*\*TAGS\*\*\s*:\s*(.+)", fiche["content"])
-            tags      = tag_match.group(1).strip() if tag_match else ""
-            conn.execute("""
-                INSERT OR REPLACE INTO notes
-                  (id, dropbox_path, titre_court, insight_cle, resume, domaine,
-                   tags, date_capture, date_traitement, score_pertinence,
-                   est_meta_fiche, sources_ids, embedding)
-                VALUES (?,?,?,?,?,?,?,?,?,0.0,0,NULL,?)
-            """, (
-                note_id, fiche["path"],
-                refined["titre_court"], refined["insight_cle"], refined["resume"], refined["domaine"],
-                tags, fiche["modified"], fiche["modified"],
-                embedding_to_bytes(embedding),
-            ))
-            conn.commit()
-        except Exception as e:
-            log.error("Erreur %s : %s", fiche["name"], e)
-
-    # 3. Détection de clusters → méta-fiches
-    rows = conn.execute(
-        "SELECT id, titre_court, insight_cle, domaine, embedding FROM notes WHERE est_meta_fiche = 0"
-    ).fetchall()
-    notes_emb = [
-        {**dict(r), "embedding": bytes_to_embedding(r["embedding"])}
-        for r in rows if r["embedding"]
-    ]
-    for cluster in detecter_clusters(notes_emb):
-        meta_key = "meta_" + "_".join(sorted(n["id"] for n in cluster))
-        meta_id  = hashlib.md5(meta_key.encode()).hexdigest()
-        if conn.execute("SELECT 1 FROM notes WHERE id = ?", (meta_id,)).fetchone():
-            continue
-        try:
-            meta = generer_meta_fiche(cluster, api_key)
-            emb  = vectoriser(f"{meta['titre_court']} {meta['insight_cle']}", api_key)
-            now  = datetime.now().isoformat()
-            conn.execute("""
-                INSERT INTO notes
-                  (id, dropbox_path, titre_court, insight_cle, resume, domaine,
-                   tags, date_capture, date_traitement, score_pertinence,
-                   est_meta_fiche, sources_ids, embedding)
-                VALUES (?,?,?,?,?,?,?,?,?,0.0,1,?,?)
-            """, (
-                meta_id, f"meta/{meta_id}",
-                meta["titre_court"], meta["insight_cle"], meta["resume"], meta["domaine"],
-                "", now, now,
-                json.dumps(meta["sources_ids"]),
-                embedding_to_bytes(emb),
-            ))
-            conn.commit()
-            log.info("Méta-fiche : %s (%d sources)", meta["titre_court"], len(cluster))
-        except Exception as e:
-            log.error("Erreur méta-fiche : %s", e)
-
-    # 4. Scores de pertinence
-    from collections import Counter
-    recent_domains = dict(Counter(
-        r["domaine"] for r in conn.execute(
-            "SELECT domaine FROM notes WHERE date_capture >= date('now','-7 days')"
+        # 3. Détection de clusters → méta-fiches
+        rows = conn.execute(
+            "SELECT id, titre_court, insight_cle, domaine, embedding FROM notes WHERE est_meta_fiche = 0"
         ).fetchall()
-    ))
-    for row in conn.execute("SELECT id, domaine, date_capture FROM notes").fetchall():
-        score = calculer_score(dict(row), recent_domains)
-        conn.execute("UPDATE notes SET score_pertinence = ? WHERE id = ?", (score, row["id"]))
-    conn.commit()
+        notes_emb = [
+            {**dict(r), "embedding": bytes_to_embedding(r["embedding"])}
+            for r in rows if r["embedding"]
+        ]
+        for cluster in detecter_clusters(notes_emb):
+            meta_key = "meta_" + "_".join(sorted(n["id"] for n in cluster))
+            meta_id  = hashlib.md5(meta_key.encode()).hexdigest()
+            if conn.execute("SELECT 1 FROM notes WHERE id = ?", (meta_id,)).fetchone():
+                continue
+            try:
+                meta = generer_meta_fiche(cluster, api_key)
+                emb  = vectoriser(f"{meta['titre_court']} {meta['insight_cle']}", api_key)
+                now  = datetime.now().isoformat()
+                conn.execute("""
+                    INSERT INTO notes
+                      (id, dropbox_path, titre_court, insight_cle, resume, domaine,
+                       tags, date_capture, date_traitement, score_pertinence,
+                       est_meta_fiche, sources_ids, embedding)
+                    VALUES (?,?,?,?,?,?,?,?,?,0.0,1,?,?)
+                """, (
+                    meta_id, f"meta/{meta_id}",
+                    meta["titre_court"], meta["insight_cle"], meta["resume"], meta["domaine"],
+                    "", now, now,
+                    json.dumps(meta["sources_ids"]),
+                    embedding_to_bytes(emb),
+                ))
+                conn.commit()
+                log.info("Méta-fiche : %s (%d sources)", meta["titre_court"], len(cluster))
+            except Exception as e:
+                log.error("Erreur méta-fiche : %s", e)
 
-    # 5. Note du jour dans Dropbox
-    top = conn.execute(
-        "SELECT titre_court, insight_cle, domaine FROM notes "
-        "WHERE est_meta_fiche = 0 ORDER BY score_pertinence DESC LIMIT 1"
-    ).fetchone()
-    if top:
-        try:
-            write_note_du_jour_dropbox(dict(top))
-        except Exception as e:
-            log.warning("Dropbox note_du_jour : %s", e)
+        # 4. Scores de pertinence
+        from collections import Counter
+        recent_domains = dict(Counter(
+            r["domaine"] for r in conn.execute(
+                "SELECT domaine FROM notes WHERE date_capture >= date('now','-7 days')"
+            ).fetchall()
+        ))
+        for row in conn.execute("SELECT id, domaine, date_capture FROM notes").fetchall():
+            score = calculer_score(dict(row), recent_domains)
+            conn.execute("UPDATE notes SET score_pertinence = ? WHERE id = ?", (score, row["id"]))
+        conn.commit()
 
-    conn.close()
-    log.info("Agent terminé. %d fiches traitées.", len(fiches_raw))
+        # 5. Note du jour dans Dropbox
+        top = conn.execute(
+            "SELECT titre_court, insight_cle, domaine FROM notes "
+            "WHERE est_meta_fiche = 0 ORDER BY score_pertinence DESC LIMIT 1"
+        ).fetchone()
+        if top:
+            try:
+                write_note_du_jour_dropbox(dict(top))
+            except Exception as e:
+                log.warning("Dropbox note_du_jour : %s", e)
+
+        log.info("Agent terminé. %d fiches traitées.", len(fiches_raw))
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
