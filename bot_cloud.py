@@ -367,6 +367,7 @@ def kb_menu_principal() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🚀 Projets",    callback_data="menu:projets"),
         ],
         [InlineKeyboardButton("📅 Mon planning",    callback_data="menu:planning")],
+        [InlineKeyboardButton("🌤️ Voir la météo",  callback_data="meteo:voir")],
         [InlineKeyboardButton("⚙️ Réglages météo", callback_data="menu:meteo")],
     ])
 
@@ -546,15 +547,21 @@ _WMO_FR = {
 
 def geocoder_ville(query: str) -> tuple:
     import requests
-    r = requests.get(
-        "https://geocoding-api.open-meteo.com/v1/search",
-        params={"name": query, "count": 1, "language": "fr", "format": "json"},
-        timeout=10,
-    )
-    r.raise_for_status()
-    results = r.json().get("results", [])
+    try:
+        r = requests.get(
+            "https://geocoding-api.open-meteo.com/v1/search",
+            params={"name": query, "count": 1, "language": "fr", "format": "json"},
+            timeout=10,
+        )
+        r.raise_for_status()
+    except requests.exceptions.Timeout:
+        raise ValueError("Délai dépassé — réessaie dans un moment")
+    except requests.exceptions.RequestException as e:
+        raise ValueError(f"Erreur réseau : {e}")
+    data = r.json()
+    results = data.get("results", [])
     if not results:
-        raise ValueError(f"Ville introuvable : {query}")
+        raise ValueError(f"Aucune ville trouvée pour « {query} » — essaie avec le pays (ex : Lyon, FR)")
     res = results[0]
     nom   = res.get("name", query)
     pays  = res.get("country_code", "")
@@ -566,8 +573,8 @@ def get_meteo(lat: float, lon: float, ville: str) -> str:
     url = (
         "https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
-        "&daily=weathercode,temperature_2m_max,temperature_2m_min,"
-        "precipitation_sum,windspeed_10m_max,uv_index_max"
+        "&daily=weather_code,temperature_2m_max,temperature_2m_min,"
+        "precipitation_sum,wind_speed_10m_max,uv_index_max"
         "&current_weather=true&timezone=Europe%2FParis"
     )
     r = requests.get(url, timeout=10)
@@ -576,13 +583,13 @@ def get_meteo(lat: float, lon: float, ville: str) -> str:
     cur = d["current_weather"]
     day = {k: v[0] for k, v in d["daily"].items()}
 
-    code = int(day["weathercode"])
+    code = int(day["weather_code"])
     emoji, desc = _WMO_FR.get(code, ("🌡️", f"Code {code}"))
     t_cur = cur["temperature"]
     t_max = day["temperature_2m_max"]
     t_min = day["temperature_2m_min"]
     pluie = day["precipitation_sum"]
-    vent  = day["windspeed_10m_max"]
+    vent  = day["wind_speed_10m_max"]
     uv    = day["uv_index_max"]
 
     lignes = [
@@ -605,7 +612,7 @@ async def envoyer_meteo_matin(context) -> None:
         texte = get_meteo(cfg["lat"], cfg["lon"], cfg["ville"])
     except Exception as e:
         log.warning("Erreur météo : %s", e)
-        texte = "🌡️ Météo indisponible ce matin."
+        texte = f"🌡️ Météo indisponible ce matin ({type(e).__name__}: {e})"
     await context.bot.send_message(
         chat_id=TELEGRAM_CHAT_ID,
         text=texte,
@@ -1227,6 +1234,20 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             f"✅ Météo reprogrammée à *{heure}h00* chaque matin.",
             parse_mode="Markdown",
             reply_markup=kb_meteo_settings(),
+        )
+        return
+
+    if data == "meteo:voir":
+        cfg = load_settings()
+        try:
+            texte = get_meteo(cfg["lat"], cfg["lon"], cfg["ville"])
+        except Exception as e:
+            log.warning("Erreur météo (bouton) : %s", e)
+            texte = f"🌡️ Météo indisponible ({e})"
+        await query.edit_message_text(
+            texte,
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Retour", callback_data="menu:accueil")]]),
         )
         return
 
