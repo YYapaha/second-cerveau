@@ -1,0 +1,179 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:           #0a0a0f;
+  --surface:      rgba(255,255,255,0.04);
+  --border:       rgba(255,255,255,0.08);
+  --border-hover: rgba(255,255,255,0.16);
+  --text-primary: #e8e8f0;
+  --text-dim:     #808090;
+  --text-muted:   #505060;
+
+  --c-travail:    #3b82f6;
+  --c-apprenti:   #8b5cf6;
+  --c-projets:    #10b981;
+  --c-jeux:       #f59e0b;
+  --c-plantes:    #22c55e;
+  --c-tdah:       #f472b6;
+  --c-meta:       #64748b;
+}
+
+html, body { height: 100%; overflow: hidden; background: var(--bg); }
+
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+/* ── Dot grid ── */
+.dot-grid {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image: radial-gradient(rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ── Aurora blobs ── */
+.aurora { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.blob {
+  position: absolute; border-radius: 50%;
+  filter: blur(90px); opacity: 0.12;
+}
+.blob-1 {
+  width: 45%; height: 45%;
+  background: radial-gradient(circle, #7c3aed, #2563eb);
+  top: 5%; left: -10%;
+}
+.blob-2 {
+  width: 40%; height: 40%;
+  background: radial-gradient(circle, #f97316, #ec4899);
+  bottom: 10%; right: -8%;
+}
+
+/* ── Layout ── */
+.app {
+  position: relative; z-index: 1;
+  height: 100vh; overflow-y: auto;
+  padding: 14px 14px 20px;
+  display: flex; flex-direction: column; gap: 14px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+.app::-webkit-scrollbar { width: 4px; }
+.app::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+/* ── Header ── */
+.app-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.logo { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+.status-pill {
+  font-size: 10px; color: var(--text-muted);
+  background: var(--surface); border: 1px solid var(--border);
+  padding: 2px 8px; border-radius: 20px;
+}
+
+/* ── Section label ── */
+.section-label {
+  font-size: 10px; font-weight: 500; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+
+/* ── Featured cards (horizontal scroll) ── */
+.cards-row {
+  display: flex; gap: 10px;
+  overflow-x: auto; padding-bottom: 4px;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+.cards-row::-webkit-scrollbar { height: 3px; }
+.cards-row::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+/* ── Card ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  min-width: 170px; max-width: 190px;
+  flex-shrink: 0;
+  cursor: default;
+  transition: border-color 0.25s, transform 0.25s;
+  opacity: 0; /* Anime.js animera l'opacité */
+}
+.card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+}
+.card.highlighted { border-color: rgba(139,92,246,0.5); }
+
+.card-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  margin-bottom: 8px; flex-shrink: 0;
+}
+.card-title   { font-size: 12px; font-weight: 500; color: var(--text-primary); margin-bottom: 5px; line-height: 1.4; }
+.card-insight { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+.card-meta    { font-size: 10px; color: var(--text-muted); margin-top: 8px; }
+
+/* Domain dot colors */
+.card[data-domaine="Travail"]            .card-dot { background: var(--c-travail); }
+.card[data-domaine="Apprentissage"]      .card-dot { background: var(--c-apprenti); }
+.card[data-domaine="Projets perso"]      .card-dot { background: var(--c-projets); }
+.card[data-domaine="Jeux vidéos"]        .card-dot { background: var(--c-jeux); }
+.card[data-domaine="Plantes"]            .card-dot { background: var(--c-plantes); }
+.card[data-domaine="Organisation TDAH"]  .card-dot { background: var(--c-tdah); }
+
+/* ── Domain section ── */
+.domain-section { display: flex; flex-direction: column; }
+.domain-header {
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.domain-header-left { display: flex; align-items: center; gap: 6px; }
+.domain-chevron { font-size: 10px; color: var(--text-muted); transition: transform 0.2s; }
+.domain-chevron.collapsed { transform: rotate(-90deg); }
+.domain-count { font-size: 10px; color: var(--text-muted); }
+.domain-cards-list { display: flex; flex-direction: column; gap: 8px; }
+.domain-cards-list.hidden { display: none; }
+
+/* Domain card (full width, single line) */
+.card.card-compact {
+  min-width: unset; max-width: unset;
+  width: 100%;
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px;
+}
+.card.card-compact .card-dot  { margin-bottom: 0; margin-top: 3px; }
+.card.card-compact .card-body { flex: 1; min-width: 0; }
+.card.card-compact .card-title   { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card.card-compact .card-insight { display: none; }
+.card.card-compact .card-meta   { margin-top: 2px; }
+
+/* ── Chat bar ── */
+.chat-bar { position: sticky; top: 0; z-index: 10; }
+.chat-input {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--text-primary);
+  font-family: inherit; font-size: 12px;
+  outline: none; transition: border-color 0.2s;
+}
+.chat-input::placeholder { color: var(--text-muted); }
+.chat-input:focus { border-color: rgba(255,255,255,0.22); }
+.chat-response {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 6px;
+  font-size: 12px; color: #b0b0c0;
+  line-height: 1.7; white-space: pre-wrap;
+}
+.hidden { display: none; }
