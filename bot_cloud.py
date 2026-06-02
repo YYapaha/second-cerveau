@@ -269,7 +269,7 @@ def extraire_image_bytes(data: bytes, mime: str = "image/jpeg") -> str:
     from openai import OpenAI
     b64 = base64.b64encode(data).decode()
     r   = OpenAI(api_key=OPENAI_API_KEY).chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4.1-mini",
         messages=[{"role": "user", "content": [
             {"type": "text", "text": "Décris cette image en détail. Si elle contient du texte, retranscris-le. Si c'est un graphique, explique les données."},
             {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
@@ -307,7 +307,7 @@ def extraire_planning_image(data: bytes) -> dict:
     b64    = base64.b64encode(data).decode()
     prompt = PROMPT_PLANNING.format(today=datetime.now().strftime("%d/%m/%Y"))
     client = OpenAI(api_key=OPENAI_API_KEY)
-    for model in ["gpt-4o-mini", "gpt-4o"]:
+    for model in ["gpt-4.1-mini", "gpt-4.1"]:
         try:
             r    = client.chat.completions.create(
                 model=model,

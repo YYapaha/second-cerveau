@@ -210,7 +210,7 @@ def analyser_contenu(contenu: str, source: str) -> str:
         contenu=contenu,
     )
     r = OpenAI(api_key=api_key).chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4.1-mini",
         messages=[
             {"role": "system", "content": _SYSTEM_MSG},
             {"role": "user",   "content": prompt},

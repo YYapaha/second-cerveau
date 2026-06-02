@@ -90,7 +90,7 @@ def extraire_image(chemin: str) -> str:
         b64 = base64.b64encode(f.read()).decode()
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4.1-mini",
         messages=[{"role": "user", "content": [
             {"type": "text", "text": "Décris cette image en détail. Si elle contient du texte, retranscris-le intégralement. Si c'est un graphique, explique les données."},
             {"type": "image_url", "image_url": {"url": f"data:image/{ext};base64,{b64}"}},
