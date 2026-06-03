@@ -300,6 +300,7 @@ def run_agent(db_path: str | Path = DB_PATH, reprocess: bool = False) -> None:
     if not api_key:
         raise ValueError("OPENAI_API_KEY manquante dans .env")
 
+    print("[SYNC_START]", flush=True)
     init_db(db_path)
     conn = get_db(db_path)
     try:
@@ -416,6 +417,10 @@ def run_agent(db_path: str | Path = DB_PATH, reprocess: bool = False) -> None:
                 log.warning("Dropbox note_du_jour : %s", e)
 
         log.info("Agent terminé. %d fiches traitées.", len(fiches_raw))
+        print("[SYNC_END]", flush=True)
+    except Exception:
+        print("[SYNC_ERROR]", flush=True)
+        raise
     finally:
         conn.close()
 
