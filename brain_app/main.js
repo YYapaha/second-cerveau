@@ -23,9 +23,8 @@ function getTargetDisplay() {
   return displays.find(d => d.bounds.height > d.bounds.width) || displays[displays.length - 1];
 }
 
-function icon(name) {
-  return nativeImage.createFromPath(path.join(ASSETS_DIR, name));
-}
+let IMG_IDLE;
+let IMG_SYNCING;
 
 function syncLabel() {
   if (isSyncing) return 'Synchronisation en cours...';
@@ -46,31 +45,40 @@ function spawnAgent() {
     windowsHide: true,
     detached: false,
     env: { ...process.env },
+    stdio: ['ignore', 'pipe', 'ignore'],
   });
 
-  readline.createInterface({ input: agentProc.stdout }).on('line', (line) => {
+  const thisProc = agentProc; // capture reference
+
+  readline.createInterface({ input: thisProc.stdout }).on('line', (line) => {
     if (line.includes('[SYNC_START]'))      { isSyncing = true;  syncFailed = false; updateTray(); }
     else if (line.includes('[SYNC_END]'))   { isSyncing = false; pollStatus(); }
     else if (line.includes('[SYNC_ERROR]')) { isSyncing = false; syncFailed = true;  updateTray(); }
   });
 
-  agentProc.on('exit', () => { agentProc = null; isSyncing = false; updateTray(); });
+  thisProc.on('exit', () => { // only null out if still current proc
+    if (agentProc === thisProc) { agentProc = null; isSyncing = false; updateTray(); }
+  });
 }
 
 function spawnServer() {
   serverProc = spawn(
     'python',
     ['-m', 'uvicorn', 'brain_server:app', '--host', '127.0.0.1', '--port', String(API_PORT), '--log-level', 'warning'],
-    { cwd: PROJECT_ROOT, windowsHide: true, detached: false, env: { ...process.env } }
+    { cwd: PROJECT_ROOT, windowsHide: true, detached: false, env: { ...process.env }, stdio: 'ignore' }
   );
 }
 
 function restartAgent() {
-  if (agentProc) { try { agentProc.kill(); } catch {} agentProc = null; }
   isSyncing  = false;
   syncFailed = false;
-  spawnAgent();
-  updateTray();
+  if (agentProc) {
+    agentProc.once('exit', () => { agentProc = null; spawnAgent(); updateTray(); });
+    try { agentProc.kill(); } catch {}
+  } else {
+    spawnAgent();
+    updateTray();
+  }
 }
 
 function killChildren() {
@@ -113,13 +121,16 @@ function buildContextMenu() {
 
 function updateTray() {
   if (!tray) return;
-  tray.setImage(icon(isSyncing ? 'logo-syncing-16.png' : 'logo-16.png'));
-  tray.setToolTip(`Brain — ${syncLabel()}`);
+  tray.setImage(isSyncing ? IMG_SYNCING : IMG_IDLE);
+  const notesStr = (!isSyncing && !syncFailed && statusCache.last_sync)
+    ? `${statusCache.total_notes} notes · `
+    : '';
+  tray.setToolTip(`Brain — ${notesStr}${syncLabel()}`);
   tray.setContextMenu(buildContextMenu());
 }
 
 function createTray() {
-  tray = new Tray(icon('logo-16.png'));
+  tray = new Tray(IMG_IDLE);
   tray.setToolTip('Brain — Démarrage...');
   tray.on('double-click', toggleWindow);
   updateTray();
@@ -165,6 +176,9 @@ function createWindow() {
 // ─── App lifecycle ────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
+  IMG_IDLE    = nativeImage.createFromPath(path.join(ASSETS_DIR, 'logo-16.png'));
+  IMG_SYNCING = nativeImage.createFromPath(path.join(ASSETS_DIR, 'logo-syncing-16.png'));
+
   spawnAgent();
   setTimeout(spawnServer, 3000);
 
