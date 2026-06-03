@@ -729,6 +729,7 @@ async function loadData() {
   } catch {
     document.getElementById('pill-stat').innerHTML =
       '<span class="dot" style="background:var(--d-projets)"></span>hors ligne';
+    setTimeout(loadData, 5000); // serveur pas encore prêt — réessayer dans 5s
   }
 }
 
@@ -738,6 +739,7 @@ async function loadData() {
   render();
   initChat();
   await loadData();
+  setInterval(loadData, 2 * 60 * 1000); // rafraîchir toutes les 2 min (nouvelles notes de l'agent)
   animate('#topbar, #une-head, #featured-cards, #chat-bar, #filter-bar', {
     opacity: [0, 1], translateY: ['8px', '0px'],
     delay: stagger(30), duration: 500, ease: 'outQuart',
