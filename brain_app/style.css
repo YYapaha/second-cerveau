@@ -330,6 +330,49 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
 /* ============================================================
    Utility
    ============================================================ */
+
+/* ============================================================
+   Source link, Points clés, Suppression, Titre éditable
+   ============================================================ */
+.source-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--font-mono); font-size: 10.5px;
+  color: var(--ink-3); cursor: pointer; margin-bottom: 6px;
+  background: none; border: none; padding: 0;
+  transition: color .2s var(--ease); text-decoration: none;
+}
+.source-link:hover { color: var(--ink-2); }
+
+.points-cles {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.points-cles li {
+  display: flex; gap: 8px;
+  font-size: 13px; line-height: 1.5; color: var(--ink-2);
+}
+.points-cles li::before { content: "•"; color: var(--accent); flex: 0 0 auto; }
+
+.deletebtn {
+  background: none; border: none; cursor: pointer;
+  color: var(--ink-4); padding: 4px; border-radius: var(--r-sm);
+  transition: color .2s var(--ease), background .2s var(--ease);
+  display: flex; align-items: center; margin-left: 8px;
+}
+.deletebtn:hover {
+  color: oklch(0.65 0.2 25);
+  background: color-mix(in oklch, oklch(0.65 0.2 25) 12%, transparent);
+}
+.deletebtn svg { width: 14px; height: 14px; }
+
+.title-editable {
+  background: none; border: none; border-bottom: 1px solid var(--stroke);
+  color: #fff; font-size: 23px; font-weight: 700; letter-spacing: -0.02em;
+  font-family: var(--font-ui); width: 100%; padding: 2px 0;
+  outline: none; cursor: text;
+}
+.title-editable:focus { border-bottom-color: var(--accent); }
+
 .hidden { display: none !important; }
 
 #constel-view { flex: 1; position: relative; min-height: 0; }
