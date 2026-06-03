@@ -3,8 +3,8 @@ const path = require('path');
 
 function getTargetDisplay() {
   const displays = screen.getAllDisplays();
-  // Utilise l'écran 3 (index 2) si disponible, sinon le dernier écran
-  return displays.length >= 3 ? displays[2] : displays[displays.length - 1];
+  const portrait = displays.find(d => d.bounds.height > d.bounds.width);
+  return portrait || displays[displays.length - 1];
 }
 
 function createWindow() {
