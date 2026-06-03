@@ -8,7 +8,7 @@ import numpy as np
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
-from brain_agent import init_db as _init_db
+from brain_agent import init_db as _init_db, get_dropbox
 
 DB_PATH = Path(__file__).parent / "brain.db"
 
@@ -35,7 +35,8 @@ def get_db() -> sqlite3.Connection:
 
 _SELECT_FIELDS = (
     "id, dropbox_path, titre_court, insight_cle, resume, "
-    "domaine, tags, date_capture, score_pertinence, est_meta_fiche, sources_ids"
+    "domaine, tags, date_capture, score_pertinence, est_meta_fiche, "
+    "sources_ids, contenu_riche, titre_modifie"
 )
 
 
@@ -78,6 +79,46 @@ def get_a_la_une(limit: int = Query(5, ge=1, le=10)):
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+@app.delete("/notes/{note_id}")
+def delete_note(note_id: str):
+    from fastapi import HTTPException
+    conn = get_db()
+    row = conn.execute(
+        "SELECT dropbox_path, est_meta_fiche FROM notes WHERE id = ?", (note_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Note introuvable")
+
+    if not row["est_meta_fiche"] and row["dropbox_path"]:
+        try:
+            get_dropbox().files_delete_v2(row["dropbox_path"])
+        except Exception as e:
+            conn.close()
+            raise HTTPException(status_code=502, detail=f"Erreur Dropbox : {e}")
+
+    conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+    conn.commit()
+    conn.close()
+    return {"deleted": note_id}
+
+
+@app.patch("/notes/{note_id}")
+def patch_note(note_id: str, body: dict):
+    from fastapi import HTTPException
+    titre = body.get("titre_court", "").strip()
+    if not titre:
+        raise HTTPException(status_code=422, detail="titre_court requis")
+    conn = get_db()
+    conn.execute(
+        "UPDATE notes SET titre_court = ?, titre_modifie = 1 WHERE id = ?",
+        (titre, note_id)
+    )
+    conn.commit()
+    conn.close()
+    return {"updated": note_id, "titre_court": titre}
 
 
 @app.post("/chat")
