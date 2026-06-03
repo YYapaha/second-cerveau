@@ -115,7 +115,19 @@ def delete_note(note_id: str):
     return {"deleted": note_id}
 ```
 
-Supprime uniquement de `brain.db`. Dropbox et Joplin sont **inchangés**. Si la note supprimée est source d'une méta-fiche, la méta-fiche reste (lien mort affiché silencieusement).
+Supprime **à la fois de `brain.db` et de Dropbox** pour éviter que la note revienne au prochain sync.
+
+Séquence :
+1. Récupérer `dropbox_path` dans la DB avant suppression
+2. Appeler `get_dropbox().files_delete_v2(dropbox_path)` (importé depuis `brain_agent`)
+3. Si Dropbox OK → supprimer de `brain.db`, retourner `{"deleted": note_id}`
+4. Si Dropbox KO → **ne pas supprimer de la DB**, retourner HTTP 502 avec le message d'erreur
+
+Comportement en cas d'échec Dropbox : l'app affiche un message d'erreur discret dans la modale ("Suppression impossible — Dropbox indisponible"), la note reste intacte.
+
+Si `dropbox_path` est `null` (note sans fichier source, ex: méta-fiche) : supprimer uniquement de `brain.db`.
+
+Si la note supprimée est source d'une méta-fiche : la méta-fiche reste dans la DB (lien mort affiché silencieusement).
 
 ---
 
@@ -277,7 +289,6 @@ Durée totale : ~500ms. Pas de confirmation (Dropbox intact).
 
 ## Hors scope
 
-- Suppression depuis Dropbox/Joplin
 - Confirmation avant suppression
 - Édition du contenu depuis l'app
 - Support de plusieurs URLs par fiche
