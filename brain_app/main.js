@@ -1,38 +1,185 @@
-const { app, BrowserWindow, screen, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, shell, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
+const { spawn } = require('child_process');
+const readline = require('readline');
+const http = require('http');
+
+const PROJECT_ROOT = path.join(__dirname, '..');
+const ASSETS_DIR   = path.join(__dirname, 'assets');
+const API_PORT     = 7842;
+
+let win        = null;
+let tray       = null;
+let agentProc  = null;
+let serverProc = null;
+let statusCache = { last_sync: null, total_notes: 0 };
+let isSyncing  = false;
+let syncFailed = false;
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
 function getTargetDisplay() {
   const displays = screen.getAllDisplays();
-  const portrait = displays.find(d => d.bounds.height > d.bounds.width);
-  return portrait || displays[displays.length - 1];
+  return displays.find(d => d.bounds.height > d.bounds.width) || displays[displays.length - 1];
+}
+
+function icon(name) {
+  return nativeImage.createFromPath(path.join(ASSETS_DIR, name));
+}
+
+function syncLabel() {
+  if (isSyncing) return 'Synchronisation en cours...';
+  if (syncFailed) return 'Dernière sync : échec';
+  if (!statusCache.last_sync) return 'Serveur en démarrage...';
+  const mins = Math.floor((Date.now() - new Date(statusCache.last_sync)) / 60000);
+  if (mins < 1)  return 'sync à l\'instant';
+  if (mins < 60) return `sync il y a ${mins} min`;
+  return `sync il y a ${Math.floor(mins / 60)}h`;
+}
+
+// ─── Process management ───────────────────────────────────────────────────────
+
+function spawnAgent() {
+  if (agentProc) return; // already running
+  agentProc = spawn('python', ['brain_agent.py'], {
+    cwd: PROJECT_ROOT,
+    windowsHide: true,
+    detached: false,
+    env: { ...process.env },
+  });
+
+  readline.createInterface({ input: agentProc.stdout }).on('line', (line) => {
+    if (line.includes('[SYNC_START]'))      { isSyncing = true;  syncFailed = false; updateTray(); }
+    else if (line.includes('[SYNC_END]'))   { isSyncing = false; pollStatus(); }
+    else if (line.includes('[SYNC_ERROR]')) { isSyncing = false; syncFailed = true;  updateTray(); }
+  });
+
+  agentProc.on('exit', () => { agentProc = null; isSyncing = false; updateTray(); });
+}
+
+function spawnServer() {
+  serverProc = spawn(
+    'python',
+    ['-m', 'uvicorn', 'brain_server:app', '--host', '127.0.0.1', '--port', String(API_PORT), '--log-level', 'warning'],
+    { cwd: PROJECT_ROOT, windowsHide: true, detached: false, env: { ...process.env } }
+  );
+}
+
+function restartAgent() {
+  if (agentProc) { try { agentProc.kill(); } catch {} agentProc = null; }
+  isSyncing  = false;
+  syncFailed = false;
+  spawnAgent();
+  updateTray();
+}
+
+function killChildren() {
+  if (agentProc)  { try { agentProc.kill();  } catch {} }
+  if (serverProc) { try { serverProc.kill(); } catch {} }
+}
+
+// ─── Status polling ───────────────────────────────────────────────────────────
+
+function pollStatus() {
+  http.get(`http://127.0.0.1:${API_PORT}/status`, (res) => {
+    let raw = '';
+    res.on('data', c => raw += c);
+    res.on('end', () => {
+      try {
+        const data = JSON.parse(raw);
+        statusCache = { last_sync: data.last_sync ?? null, total_notes: data.total_notes || 0 };
+        updateTray();
+      } catch {}
+    });
+  }).on('error', () => {}); // server not ready yet
+}
+
+// ─── Tray ─────────────────────────────────────────────────────────────────────
+
+function buildContextMenu() {
+  return Menu.buildFromTemplate([
+    { label: 'Brain System', enabled: false },
+    { type: 'separator' },
+    { label: win?.isVisible() ? 'Masquer l\'app' : 'Ouvrir l\'app', click: toggleWindow },
+    { type: 'separator' },
+    { label: syncLabel(),                                    enabled: false },
+    { label: `${statusCache.total_notes} notes indexées`,   enabled: false },
+    { type: 'separator' },
+    { label: '↺ Relancer l\'agent', click: restartAgent },
+    { type: 'separator' },
+    { label: '✕ Quitter', click: () => { app.isQuitting = true; app.quit(); } },
+  ]);
+}
+
+function updateTray() {
+  if (!tray) return;
+  tray.setImage(icon(isSyncing ? 'logo-syncing-16.png' : 'logo-16.png'));
+  tray.setToolTip(`Brain — ${syncLabel()}`);
+  tray.setContextMenu(buildContextMenu());
+}
+
+function createTray() {
+  tray = new Tray(icon('logo-16.png'));
+  tray.setToolTip('Brain — Démarrage...');
+  tray.on('double-click', toggleWindow);
+  updateTray();
+}
+
+// ─── Window ───────────────────────────────────────────────────────────────────
+
+function toggleWindow() {
+  if (!win) return;
+  if (win.isVisible()) {
+    win.hide();
+  } else {
+    const display = getTargetDisplay();
+    win.setBounds(display.bounds);
+    win.maximize();
+    win.show();
+    win.focus();
+  }
+  updateTray(); // refresh Ouvrir/Masquer label
 }
 
 function createWindow() {
-  const display = getTargetDisplay();
-  const { x, y, width, height } = display.bounds;
-
-  const win = new BrowserWindow({
+  const { x, y, width, height } = getTargetDisplay().bounds;
+  win = new BrowserWindow({
     x, y, width, height,
     frame: false,
     backgroundColor: '#0a0a0f',
+    skipTaskbar: true,
+    show: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
     },
   });
-
   win.loadFile('index.html');
   win.maximize();
+  win.on('close', (e) => {
+    if (!app.isQuitting) { e.preventDefault(); win.hide(); updateTray(); }
+  });
 }
 
+// ─── App lifecycle ────────────────────────────────────────────────────────────
+
 app.whenReady().then(() => {
+  spawnAgent();
+  setTimeout(spawnServer, 3000);
+
   createWindow();
+  createTray();
+
   ipcMain.on('open-url', (_, url) => {
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
   });
+
+  pollStatus();
+  setInterval(pollStatus, 30_000);
+  setInterval(() => { if (!agentProc) spawnAgent(); }, 2 * 60 * 60 * 1000);
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+app.on('window-all-closed', () => { /* tray keeps app alive */ });
+
+app.on('will-quit', killChildren);
