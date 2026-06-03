@@ -64,6 +64,12 @@ const ICONS = {
   arrowLeft: `<svg viewBox="0 0 24 24" fill="none" width="15" height="15">
     <path d="M19 12H5M11 6l-6 6 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none" width="14" height="14">
+    <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`,
+  externalLink: `<svg viewBox="0 0 24 24" fill="none" width="12" height="12">
+    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`,
 };
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -139,6 +145,10 @@ function domainConfig(domaine) {
 }
 
 function mapNote(raw) {
+  const cr = (() => {
+    try { return JSON.parse(raw.contenu_riche || '{}'); }
+    catch { return {}; }
+  })();
   return {
     ...raw,
     id: String(raw.id),
@@ -148,6 +158,11 @@ function mapNote(raw) {
     liens: parseLiens(raw.sources_ids),
     parsedTags: parseTags(raw.tags),
     _days: daysAgo(raw.date_capture),
+    url_source:      cr.url_source      || null,
+    points_cles:     Array.isArray(cr.points_cles) ? cr.points_cles : [],
+    pourquoi_garder: cr.pourquoi_garder || null,
+    quand_ressortir: cr.quand_ressortir || null,
+    titre_modifie:   Boolean(raw.titre_modifie),
   };
 }
 
@@ -348,34 +363,96 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowLeft')  navModal(-1);
 });
 
+async function deleteNote(note) {
+  const modalEl = document.querySelector('#modal-scrim .modal');
+  const scrimEl = document.getElementById('modal-scrim');
+  if (modalEl) await animate(modalEl, { scale: [1, 0.95], opacity: [1, 0], duration: 280, ease: 'outQuart' }).finished;
+  if (scrimEl) await animate(scrimEl, { opacity: [1, 0], duration: 200, ease: 'outQuart' }).finished;
+
+  const card = document.querySelector(`[data-id="${note.id}"]`);
+  if (card) await animate(card, { translateX: [0, -12], opacity: [1, 0], duration: 220, ease: 'outCubic' }).finished;
+
+  try {
+    const resp = await fetch(`${API}/notes/${note.id}`, { method: 'DELETE' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert(`Suppression impossible : ${err.detail || resp.status}`);
+      render();
+      return;
+    }
+  } catch {
+    alert('Serveur non disponible.');
+    render();
+    return;
+  }
+
+  setState({
+    openNote: null,
+    notes:    state.notes.filter(n => n.id !== note.id),
+    featured: state.featured.filter(n => n.id !== note.id),
+  });
+}
+
+async function patchTitre(note, newTitre) {
+  if (!newTitre.trim() || newTitre.trim() === note.titre) return;
+  try {
+    const resp = await fetch(`${API}/notes/${note.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ titre_court: newTitre.trim() }),
+    });
+    if (!resp.ok) return;
+    const update = n => n.id === note.id ? { ...n, titre: newTitre.trim(), titre_modifie: true } : n;
+    setState({
+      notes:    state.notes.map(update),
+      featured: state.featured.map(update),
+      openNote: state.openNote?.id === note.id ? { ...state.openNote, titre: newTitre.trim() } : state.openNote,
+    });
+  } catch { /* silencieux */ }
+}
+
 function renderModal() {
   const panel = document.getElementById('panel');
   const existing = document.getElementById('modal-scrim');
   if (existing) existing.remove();
   if (!state.openNote) return;
 
-  const note = state.openNote;
-  const dom = domainConfig(note.domaine);
-  const list = state.filteredList;
-  const idx = Math.max(0, list.findIndex(n => n.id === note.id));
+  const note  = state.openNote;
+  const dom   = domainConfig(note.domaine);
+  const list  = state.filteredList;
+  const idx   = Math.max(0, list.findIndex(n => n.id === note.id));
   const total = list.length;
   const scoreW = Math.round((note.score_pertinence || 0) * 100);
 
-  const linkedNotes = note.liens
-    .map(id => state.notes.find(n => n.id === id))
-    .filter(Boolean);
+  const linkedNotes = note.liens.map(id => state.notes.find(n => n.id === id)).filter(Boolean);
+  const linkedLabel = note.est_meta ? 'Notes sources' : 'Notes liées';
 
   const tagsHtml = note.parsedTags.length
     ? `<div class="blocklabel">Tags</div><div class="tags">${note.parsedTags.map(t => `<span class="tagpill">#${t}</span>`).join('')}</div>`
     : '';
 
-  const linkedLabel = note.est_meta ? 'Notes sources' : 'Notes liées';
   const linkedHtml = linkedNotes.length
     ? `<div class="blocklabel">${linkedLabel} · ${linkedNotes.length}</div>
        <div class="linked">${linkedNotes.map(l => {
          const ldom = domainConfig(l.domaine);
          return `<button class="lrow" data-linked="${l.id}" style="--accent:${ldom.color}"><span class="ddot"></span><span class="lt">${l.titre}</span>${ICONS.arrow}</button>`;
        }).join('')}</div>`
+    : '';
+
+  const pointsHtml = note.points_cles.length
+    ? `<div class="blocklabel">Points clés</div><ul class="points-cles">${note.points_cles.map(p => `<li>${p}</li>`).join('')}</ul>`
+    : '';
+
+  const pourquoiHtml = note.pourquoi_garder
+    ? `<div class="blocklabel">Pourquoi garder</div><div class="resume">${note.pourquoi_garder}</div>`
+    : '';
+
+  const quandHtml = note.quand_ressortir
+    ? `<div class="blocklabel">Quand ressortir</div><div class="resume">${note.quand_ressortir}</div>`
+    : '';
+
+  const sourceLinkHtml = note.url_source
+    ? `<button class="source-link" id="modal-source-link">${ICONS.externalLink} Ouvrir la source</button>`
     : '';
 
   panel.insertAdjacentHTML('beforeend', `
@@ -389,13 +466,17 @@ function renderModal() {
           <button class="closebtn" id="modal-close">${ICONS.close}</button>
           <div class="htext">
             <div class="domrow"><span class="ddot"></span><span class="domlabel">${note.est_meta ? 'Synthèse · ' : ''}${dom.label}</span></div>
-            <h2>${note.titre}</h2>
+            ${sourceLinkHtml}
+            <h2 id="modal-title" class="title-editable" contenteditable="true" spellcheck="false">${note.titre}</h2>
           </div>
         </div>
         <div class="mbody">
           <div class="insight-box"><div class="bar"></div><div class="it">${note.insight}</div></div>
           <div class="blocklabel">Résumé</div>
           <div class="resume">${note.resume || ''}</div>
+          ${pointsHtml}
+          ${pourquoiHtml}
+          ${quandHtml}
           ${tagsHtml}
           ${linkedHtml}
           <div class="mfoot">
@@ -406,6 +487,7 @@ function renderModal() {
               <div class="track"><div class="fill" style="width:${scoreW}%"></div></div>
               <span class="metatime">${(note.score_pertinence || 0).toFixed(2)}</span>
             </div>
+            <button class="deletebtn" id="modal-delete" title="Supprimer cette note">${ICONS.trash}</button>
           </div>
         </div>
       </div>
@@ -413,10 +495,26 @@ function renderModal() {
   `);
 
   const scrim = document.getElementById('modal-scrim');
+
   scrim.addEventListener('click', e => { if (e.target === scrim) closeModal(); });
   document.getElementById('modal-close').addEventListener('click', closeModal);
   document.getElementById('modal-prev').addEventListener('click', () => navModal(-1));
   document.getElementById('modal-next').addEventListener('click', () => navModal(1));
+
+  const srcBtn = document.getElementById('modal-source-link');
+  if (srcBtn && note.url_source) {
+    srcBtn.addEventListener('click', () => window.openUrl(note.url_source));
+  }
+
+  document.getElementById('modal-delete').addEventListener('click', () => deleteNote(note));
+
+  const titleEl = document.getElementById('modal-title');
+  titleEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); titleEl.blur(); }
+    if (e.key === 'Escape') { titleEl.textContent = note.titre; titleEl.blur(); }
+  });
+  titleEl.addEventListener('blur', () => patchTitre(note, titleEl.textContent.trim()));
+
   scrim.querySelectorAll('[data-linked]').forEach(btn => {
     btn.addEventListener('click', () => {
       const linked = state.notes.find(n => n.id === btn.dataset.linked);
