@@ -3,51 +3,71 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; connect-src http://127.0.0.1:7842">
+        content="default-src 'self' 'unsafe-inline' https://api.fontshare.com https://cdn.fontshare.com https://fonts.googleapis.com https://fonts.gstatic.com; connect-src http://127.0.0.1:7842; font-src 'self' data: https://cdn.fontshare.com https://fonts.gstatic.com">
   <title>Second Cerveau</title>
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&display=swap" rel="stylesheet">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <!-- Fond : blobs aurora + dot grid -->
-  <div class="aurora">
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
-  </div>
-  <div class="dot-grid"></div>
+  <div class="stage">
+    <!-- Aurora blobs (animés par CSS) -->
+    <div class="aurora"><b class="b1"></b><b class="b2"></b><b class="b3"></b></div>
 
-  <!-- Contenu principal -->
-  <div class="app" id="app">
+    <!-- Panneau principal -->
+    <div class="panel" id="panel">
 
-    <header class="app-header">
-      <span class="logo">🧠 Second Cerveau</span>
-      <span class="status-pill" id="status-pill">chargement…</span>
-    </header>
+      <!-- Top bar -->
+      <div class="topbar" id="topbar">
+        <div class="brand">
+          <span class="logo" id="logo-slot"></span>
+          <span class="wordmark">Second Cerveau</span>
+        </div>
+        <span class="spacer"></span>
+        <div class="modeswitch">
+          <button id="btn-grille"></button>
+          <button id="btn-constellation"></button>
+        </div>
+        <span class="pill-stat" id="pill-stat"><span class="dot"></span></span>
+      </div>
 
-    <!-- À la une -->
-    <section class="section" id="section-featured">
-      <h2 class="section-label">⭐ À la une</h2>
-      <div class="cards-row" id="featured-cards"></div>
-    </section>
+      <!-- Vue Grille -->
+      <div id="grille-view" class="scroll">
 
-    <!-- Barre de chat -->
-    <div class="chat-bar">
-      <input
-        type="text"
-        id="chat-input"
-        class="chat-input"
-        placeholder="🔍 Pose une question à tes notes…"
-        autocomplete="off"
-      />
-      <div id="chat-response" class="chat-response hidden"></div>
-    </div>
+        <div class="une-head" id="une-head">
+          <span class="star" id="star-icon"></span>
+          <span class="uppercase-label" style="color:var(--d-une)">À la une</span>
+        </div>
+        <div class="rail" id="featured-cards"></div>
 
-    <!-- Sections par domaine -->
-    <div id="domains-container"></div>
+        <div class="chat" id="chat-bar">
+          <div class="field">
+            <span id="spark-icon"></span>
+            <input type="text" id="chat-input" placeholder="Pose une question à tes notes…" autocomplete="off">
+            <span class="kbd">↵</span>
+          </div>
+          <div id="chat-response" class="chat-response hidden"></div>
+        </div>
 
-  </div>
+        <div class="filters" id="filter-bar"></div>
+
+        <div id="sections-container"></div>
+
+      </div><!-- /grille-view -->
+
+      <!-- Vue Constellation (cachée par défaut) -->
+      <div id="constel-view" class="hidden"></div>
+
+      <!-- Stats de coin (grille uniquement) -->
+      <div class="corner bl" id="corner-bl"></div>
+      <div class="corner br" id="corner-br"></div>
+
+    </div><!-- /panel -->
+  </div><!-- /stage -->
 
   <script type="module" src="renderer.js"></script>
 </body>
