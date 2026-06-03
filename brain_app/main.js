@@ -46,6 +46,7 @@ function spawnAgent() {
     detached: false,
     env: { ...process.env },
     stdio: ['ignore', 'pipe', 'ignore'],
+    shell: true, // required for Microsoft Store Python (app execution aliases)
   });
 
   const thisProc = agentProc; // capture reference
@@ -65,7 +66,7 @@ function spawnServer() {
   serverProc = spawn(
     'python',
     ['-m', 'uvicorn', 'brain_server:app', '--host', '127.0.0.1', '--port', String(API_PORT), '--log-level', 'warning'],
-    { cwd: PROJECT_ROOT, windowsHide: true, detached: false, env: { ...process.env }, stdio: 'ignore' }
+    { cwd: PROJECT_ROOT, windowsHide: true, detached: false, env: { ...process.env }, stdio: 'ignore', shell: true }
   );
 }
 
@@ -82,8 +83,11 @@ function restartAgent() {
 }
 
 function killChildren() {
-  if (agentProc)  { try { agentProc.kill();  } catch {} }
-  if (serverProc) { try { serverProc.kill(); } catch {} }
+  // shell:true means the direct child is cmd.exe — use taskkill to terminate the full tree
+  for (const proc of [agentProc, serverProc]) {
+    if (!proc || !proc.pid) continue;
+    try { spawn('taskkill', ['/F', '/T', '/PID', String(proc.pid)], { windowsHide: true, shell: false }); } catch {}
+  }
 }
 
 // ─── Status polling ───────────────────────────────────────────────────────────
