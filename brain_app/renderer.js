@@ -715,6 +715,42 @@ function render() {
   renderBlocs();  // ← add this
 }
 
+// ── Blocs resize ──────────────────────────────────────────────────────────────
+
+function initBlocsResize() {
+  const section = document.getElementById('blocs-section');
+  const handle  = document.getElementById('blocs-resize-handle');
+  if (!section || !handle) return;
+
+  const saved = parseInt(localStorage.getItem('blocs-height'), 10);
+  if (saved >= 80 && saved <= 400) section.style.height = saved + 'px';
+
+  let startY = 0, startH = 0, dragging = false;
+
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    dragging = true;
+    startY = e.clientY;
+    startH = section.offsetHeight;
+    document.body.style.cursor     = 'ns-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const newH = Math.max(80, Math.min(400, startH - (e.clientY - startY)));
+    section.style.height = newH + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.cursor     = '';
+    document.body.style.userSelect = '';
+    localStorage.setItem('blocs-height', section.offsetHeight);
+  });
+}
+
 // ── Blocs actions ─────────────────────────────────────────────────────────────
 
 async function checkItem(name, idx) {
@@ -741,7 +777,13 @@ function renderBlocs() {
   if (!section) return;
   if (!state.blocs || state.blocs.length === 0) return;
 
-  section.innerHTML = `<div class="blocs-grid">${state.blocs.map(renderBlocCol).join('')}</div>`;
+  let grid = section.querySelector('.blocs-grid');
+  if (!grid) {
+    grid = document.createElement('div');
+    grid.className = 'blocs-grid';
+    section.appendChild(grid);
+  }
+  grid.innerHTML = state.blocs.map(renderBlocCol).join('');
 
   // Event delegation — clicks on items
   section.querySelectorAll('.bloc-item').forEach(el => {
@@ -835,6 +877,7 @@ async function loadData() {
 (async () => {
   render();
   initChat();
+  initBlocsResize();
   await loadData();
   setInterval(loadData, 2 * 60 * 1000); // rafraîchir toutes les 2 min (nouvelles notes de l'agent)
   animate('#topbar, #une-head, #featured-cards, #chat-bar, #filter-bar', {
