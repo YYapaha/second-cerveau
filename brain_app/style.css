@@ -331,3 +331,5 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
    Utility
    ============================================================ */
 .hidden { display: none !important; }
+
+#constel-view { flex: 1; position: relative; min-height: 0; }

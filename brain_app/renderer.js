@@ -123,8 +123,9 @@ function relTimeFromDate(dateStr) {
 
 function parseTags(raw) {
   if (!raw) return [];
-  try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; }
-  catch { return String(raw).split(',').map(t => t.trim()).filter(Boolean); }
+  const clean = t => t.trim().replace(/^#+/, '');
+  try { const p = JSON.parse(raw); return Array.isArray(p) ? p.map(clean).filter(Boolean) : []; }
+  catch { return String(raw).split(',').map(clean).filter(Boolean); }
 }
 
 function parseLiens(sourcesIds) {
@@ -515,8 +516,9 @@ function renderConstellation() {
   view.classList.remove('hidden');
 
   const notes = state.filteredList;
-  const w = view.clientWidth  || 800;
-  const h = view.clientHeight || 900;
+  const panel = document.getElementById('panel');
+  const w = panel.clientWidth  || window.innerWidth  || 800;
+  const h = (panel.clientHeight || window.innerHeight || 900) - 60; // minus topbar
   const { pos, edges } = computeLayout(notes, w, h);
   const pan = constellationPan;
   const hov = constellationHover;
