@@ -78,6 +78,8 @@ let state = {
   mode: 'grille',
   notes: [],
   featured: [],
+  blocs: [],                    // ← add
+  checkedItems: new Set(),      // ← add
   status: { total_notes: 0, meta_fiches_count: 0, last_sync: null },
   activeFilter: 'tous',
   sort: 'recent',
@@ -710,21 +712,116 @@ function render() {
     renderCornerStats();
   }
   renderModal();
+  renderBlocs();  // ← add this
+}
+
+// ── Blocs actions ─────────────────────────────────────────────────────────────
+
+async function checkItem(name, idx) {
+  const key = `${name}:${idx}`;
+  if (state.checkedItems.has(key)) return;
+  state.checkedItems.add(key);
+  renderBlocs();
+  fetch(`${API}/blocs/${name}/${idx}`, { method: 'DELETE' }).catch(() => {});
+}
+
+async function addItem(name, texte) {
+  if (!texte.trim()) return;
+  await fetch(`${API}/blocs/${name}/item`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ texte: texte.trim() }),
+  }).catch(() => {});
+  const blocsRaw = await fetch(`${API}/blocs`).then(r => r.json()).catch(() => state.blocs);
+  setState({ blocs: blocsRaw });
+}
+
+function renderBlocs() {
+  const section = document.getElementById('blocs-section');
+  if (!section) return;
+  if (!state.blocs || state.blocs.length === 0) return;
+
+  section.innerHTML = `<div class="blocs-grid">${state.blocs.map(renderBlocCol).join('')}</div>`;
+
+  // Event delegation — clicks on items
+  section.querySelectorAll('.bloc-item').forEach(el => {
+    el.addEventListener('click', () => {
+      checkItem(el.dataset.name, parseInt(el.dataset.idx, 10));
+    });
+  });
+
+  // + button and input per column
+  state.blocs.forEach(({ name }) => {
+    const btn   = document.getElementById(`bloc-add-btn-${name}`);
+    const input = document.getElementById(`bloc-add-input-${name}`);
+    if (!btn || !input) return;
+
+    btn.addEventListener('click', () => {
+      btn.style.display = 'none';
+      input.classList.remove('hidden');
+      input.focus();
+    });
+
+    const confirm = async () => {
+      const val = input.value;
+      input.value = '';
+      input.classList.add('hidden');
+      btn.style.display = '';
+      if (val.trim()) await addItem(name, val);
+    };
+
+    input.addEventListener('keydown', async e => {
+      if (e.key === 'Enter')  { e.preventDefault(); await confirm(); }
+      if (e.key === 'Escape') { input.value = ''; input.classList.add('hidden'); btn.style.display = ''; }
+    });
+    input.addEventListener('blur', confirm);
+  });
+}
+
+function renderBlocCol({ name, titre, items }) {
+  const uncheckedCount = items.filter(it => !state.checkedItems.has(`${name}:${it.idx}`)).length;
+  return `
+    <div class="bloc-col">
+      <div class="bloc-col-header">${titre} <span style="opacity:.5">(${uncheckedCount})</span></div>
+      <div class="bloc-items">
+        ${items.map(it => renderBlocItem(name, it)).join('')}
+      </div>
+      <div class="bloc-add">
+        <button class="bloc-add-btn" id="bloc-add-btn-${name}">+ ajouter</button>
+        <input class="bloc-add-input hidden" id="bloc-add-input-${name}"
+               type="text" placeholder="nouvel item…" maxlength="200">
+      </div>
+    </div>`;
+}
+
+function renderBlocItem(name, { idx, texte, date }) {
+  const checked   = state.checkedItems.has(`${name}:${idx}`);
+  const dateShort = date ? date.slice(0, 5) : '';
+  return `
+    <div class="bloc-item${checked ? ' checked' : ''}" data-name="${name}" data-idx="${idx}">
+      <div class="bloc-check"></div>
+      <div class="bloc-item-body">
+        <div class="bloc-item-text">${texte}</div>
+        ${dateShort ? `<div class="bloc-item-date">${dateShort}</div>` : ''}
+      </div>
+    </div>`;
 }
 
 // ── Data fetch ────────────────────────────────────────────────────────────────
 
 async function loadData() {
   try {
-    const [statusData, featuredRaw, notesRaw] = await Promise.all([
+    const [statusData, featuredRaw, notesRaw, blocsRaw] = await Promise.all([
       fetch(`${API}/status`).then(r => r.json()),
       fetch(`${API}/a-la-une?limit=6`).then(r => r.json()),
       fetch(`${API}/notes?limit=200`).then(r => r.json()),
+      fetch(`${API}/blocs`).then(r => r.json()).catch(() => []),
     ]);
     setState({
       status: statusData,
       notes: notesRaw.map(mapNote),
       featured: featuredRaw.map(mapNote),
+      blocs: blocsRaw,
     });
   } catch {
     document.getElementById('pill-stat').innerHTML =
