@@ -300,14 +300,15 @@ def run_agent(db_path: str | Path = DB_PATH, reprocess: bool = False) -> None:
     if not api_key:
         raise ValueError("OPENAI_API_KEY manquante dans .env")
 
-    print("[SYNC_START]", flush=True)
     init_db(db_path)
     conn = get_db(db_path)
     try:
+        print("[SYNC_START]", flush=True)
         # 1. Sync Dropbox
         fiches_raw = sync_from_dropbox()
         if not fiches_raw:
             log.warning("Aucune fiche récupérée.")
+            print("[SYNC_END]", flush=True)
             return
 
         # 2. Raffiner les fiches non encore traitées
