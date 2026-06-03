@@ -1,4 +1,5 @@
 import { animate, stagger } from './node_modules/animejs/dist/modules/index.js';
+import { initZen, activateZen, deactivateZen } from './zen.js';
 
 const API = window.BRAIN_API_URL || 'http://127.0.0.1:7842';
 
@@ -177,14 +178,18 @@ function renderTopbar() {
 
   const btnG = document.getElementById('btn-grille');
   const btnC = document.getElementById('btn-constellation');
+  const btnZ = document.getElementById('btn-zen');
   btnG.innerHTML = `${ICONS.grid} Grille`;
   btnC.innerHTML = `${ICONS.nodes} Constellation`;
+  btnZ.innerHTML = '🎮 Zen';
   btnG.classList.toggle('active', state.mode === 'grille');
   btnC.classList.toggle('active', state.mode === 'constellation');
+  btnZ.classList.toggle('active', state.mode === 'zen');
 
   if (!btnG._bound) {
     btnG.addEventListener('click', () => setState({ mode: 'grille' }));
     btnC.addEventListener('click', () => setState({ mode: 'constellation' }));
+    btnZ.addEventListener('click', () => setState({ mode: 'zen' }));
     btnG._bound = true;
   }
 
@@ -705,6 +710,20 @@ function renderGrille() {
 
 function render() {
   renderTopbar();
+  const isZen = state.mode === 'zen';
+
+  document.getElementById('zen-view').classList.toggle('hidden', !isZen);
+  document.getElementById('blocs-section').style.display = isZen ? 'none' : '';
+
+  if (isZen) {
+    document.getElementById('grille-view').classList.add('hidden');
+    document.getElementById('constel-view').classList.add('hidden');
+    activateZen();
+    return;
+  }
+
+  deactivateZen();
+
   if (state.mode === 'grille') renderGrille();
   else {
     document.getElementById('grille-view').classList.add('hidden');
@@ -712,7 +731,7 @@ function render() {
     renderCornerStats();
   }
   renderModal();
-  renderBlocs();  // ← add this
+  renderBlocs();
 }
 
 // ── Blocs resize ──────────────────────────────────────────────────────────────
@@ -878,6 +897,7 @@ async function loadData() {
   render();
   initChat();
   initBlocsResize();
+  initZen();
   await loadData();
   setInterval(loadData, 2 * 60 * 1000); // rafraîchir toutes les 2 min (nouvelles notes de l'agent)
   animate('#topbar, #une-head, #featured-cards, #chat-bar, #filter-bar', {

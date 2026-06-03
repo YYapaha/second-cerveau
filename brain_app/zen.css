@@ -1,0 +1,62 @@
+/* ============================================================
+   Onglet Zen
+   ============================================================ */
+#zen-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+  z-index: 1;
+}
+
+#zen-canvas-area {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: #09090f;
+}
+
+#zen-bottom-bar {
+  flex-shrink: 0;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  border-top: 1px solid var(--stroke);
+  background: rgba(255,255,255,0.02);
+  overflow-x: auto;
+  padding: 0 8px;
+  gap: 4px;
+}
+#zen-bottom-bar::-webkit-scrollbar { display: none; }
+
+.zen-tab {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  min-width: 48px;
+  opacity: 0.35;
+  transition: background .15s var(--ease), opacity .15s var(--ease);
+  flex-shrink: 0;
+}
+.zen-tab.available { opacity: 1; cursor: pointer; }
+.zen-tab.available:hover { background: var(--glass); }
+.zen-tab.active { background: var(--glass); opacity: 1; }
+
+.zen-tab-icon  { font-size: 18px; line-height: 1; pointer-events: none; }
+.zen-tab-label {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  letter-spacing: 0.05em;
+  color: var(--ink-4);
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.zen-tab.active .zen-tab-label { color: oklch(0.85 0.11 90); }

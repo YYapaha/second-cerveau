@@ -11,6 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="zen.css">
 </head>
 <body>
 
@@ -31,6 +32,7 @@
         <div class="modeswitch">
           <button id="btn-grille"></button>
           <button id="btn-constellation"></button>
+          <button id="btn-zen"></button>
         </div>
         <span class="pill-stat" id="pill-stat"><span class="dot"></span></span>
       </div>
@@ -61,6 +63,9 @@
 
       <!-- Vue Constellation (cachée par défaut) -->
       <div id="constel-view" class="hidden"></div>
+
+      <!-- Onglet Zen -->
+      <div id="zen-view" class="hidden"></div>
 
       <!-- Blocs fixes (Travail / Projets / Bloc-notes) -->
       <section id="blocs-section">
