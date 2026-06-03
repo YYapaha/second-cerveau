@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
+import dropbox as dbx_mod
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from brain_agent import init_db as _init_db, get_dropbox
@@ -77,10 +78,11 @@ def _parse_bloc(content: str) -> list[dict]:
 @app.get("/blocs")
 def get_blocs():
     result = []
+    dbx = get_dropbox()
     for name, path in BLOCS.items():
         items = []
         try:
-            _, dl = get_dropbox().files_download(path)
+            _, dl = dbx.files_download(path)
             items = _parse_bloc(dl.content.decode("utf-8", errors="replace"))
         except Exception:
             pass
@@ -90,13 +92,13 @@ def get_blocs():
 
 @app.post("/blocs/{name}/item")
 def add_bloc_item(name: str, body: dict):
-    from fastapi import HTTPException
-    import dropbox as dbx_mod
     if name not in BLOCS:
         raise HTTPException(status_code=404, detail="Bloc inconnu")
     texte = (body.get("texte") or "").strip()
     if not texte:
         raise HTTPException(status_code=422, detail="texte requis")
+    if "\n" in texte or "\r" in texte:
+        raise HTTPException(status_code=422, detail="texte ne peut pas contenir de saut de ligne")
     date_str = datetime.now().strftime("%d/%m/%Y %H:%M")
     new_line = f"- {texte} ← {date_str}\n"
     dbx  = get_dropbox()
@@ -104,7 +106,9 @@ def add_bloc_item(name: str, body: dict):
     try:
         _, dl = dbx.files_download(path)
         content = dl.content.decode("utf-8", errors="replace")
-    except Exception:
+    except Exception as e:
+        if 'not_found' not in str(e).lower():
+            raise HTTPException(status_code=502, detail=f"Erreur Dropbox : {e}")
         content = f"# {_TITRES[name]}\n"
     if not content.endswith("\n"):
         content += "\n"
@@ -115,8 +119,6 @@ def add_bloc_item(name: str, body: dict):
 
 @app.delete("/blocs/{name}/{idx}")
 def delete_bloc_item(name: str, idx: int):
-    from fastapi import HTTPException
-    import dropbox as dbx_mod
     if name not in BLOCS:
         raise HTTPException(status_code=404, detail="Bloc inconnu")
     dbx  = get_dropbox()
@@ -129,7 +131,7 @@ def delete_bloc_item(name: str, idx: int):
     lines = content.splitlines(keepends=True)
     item_idx, line_to_remove = 0, None
     for i, line in enumerate(lines):
-        if line.lstrip().startswith("- "):
+        if line.startswith("- "):
             if item_idx == idx:
                 line_to_remove = i
                 break
@@ -184,7 +186,6 @@ def get_a_la_une(limit: int = Query(5, ge=1, le=10)):
 
 @app.delete("/notes/{note_id}")
 def delete_note(note_id: str):
-    from fastapi import HTTPException
     conn = get_db()
     row = conn.execute(
         "SELECT dropbox_path, est_meta_fiche FROM notes WHERE id = ?", (note_id,)
@@ -210,7 +211,6 @@ def delete_note(note_id: str):
 
 @app.patch("/notes/{note_id}")
 def patch_note(note_id: str, body: dict):
-    from fastapi import HTTPException
     titre = body.get("titre_court", "").strip()
     if not titre:
         raise HTTPException(status_code=422, detail="titre_court requis")

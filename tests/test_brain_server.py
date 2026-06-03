@@ -258,3 +258,9 @@ def test_add_bloc_unknown_name_404():
     with patch("brain_server.get_dropbox", return_value=MagicMock()):
         r = client.post("/blocs/inconnu/item", json={"texte": "test"})
     assert r.status_code == 404
+
+
+def test_add_bloc_item_newline_in_texte_422():
+    with patch("brain_server.get_dropbox", return_value=MagicMock()):
+        r = client.post("/blocs/travail/item", json={"texte": "task\ninjected"})
+    assert r.status_code == 422
