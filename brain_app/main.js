@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, shell } = require('electron');
 const path = require('path');
 
 function getTargetDisplay() {
@@ -26,7 +26,12 @@ function createWindow() {
   win.maximize();
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  ipcMain.on('open-url', (_, url) => {
+    if (/^https?:\/\//.test(url)) shell.openExternal(url);
+  });
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
