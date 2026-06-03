@@ -117,3 +117,44 @@ def test_detecter_clusters_groups_similar():
     ids = {n["id"] for n in clusters[0]}
     assert "a" in ids and "b" in ids and "c" in ids
     assert "d" not in ids
+
+
+def test_init_db_has_new_columns():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        from brain_agent import init_db
+        init_db(db_path)
+        conn = sqlite3.connect(db_path)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(notes)").fetchall()}
+        assert "contenu_riche"  in cols
+        assert "titre_modifie"  in cols
+        conn.close()
+    finally:
+        os.unlink(db_path)
+
+
+def test_raffiner_note_returns_contenu_riche():
+    from brain_agent import raffiner_note
+    from unittest.mock import patch, MagicMock
+    mock_out = {
+        "titre_court": "Astuces Claude Code",
+        "insight_cle": "Personnaliser pour maximiser.",
+        "resume": "Un résumé.",
+        "domaine": "Apprentissage",
+        "contenu_riche": {
+            "url_source": "https://github.com/test",
+            "points_cles": ["Point 1", "Point 2"],
+            "pourquoi_garder": "Utile.",
+            "quand_ressortir": "Avant un projet."
+        }
+    }
+    with patch("brain_agent.OpenAI") as mock_cls:
+        inst = MagicMock()
+        mock_cls.return_value = inst
+        inst.chat.completions.create.return_value.choices[0].message.content = json.dumps(mock_out)
+        result = raffiner_note("Contenu test", "fake-key")
+    assert "contenu_riche" in result
+    cr = result["contenu_riche"]
+    assert isinstance(cr["points_cles"], list)
+    assert cr["url_source"] == "https://github.com/test"

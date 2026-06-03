@@ -43,14 +43,25 @@ def init_db(db_path: str | Path = DB_PATH) -> None:
                 score_pertinence REAL    DEFAULT 0.0,
                 est_meta_fiche   INTEGER DEFAULT 0,
                 sources_ids      TEXT,
-                embedding        BLOB
+                embedding        BLOB,
+                contenu_riche    TEXT,
+                titre_modifie    INTEGER DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS meta (
                 key   TEXT PRIMARY KEY,
                 value TEXT
             );
         """)
-        conn.commit()
+        # Migration pour les DB existantes
+        for col, definition in [
+            ("contenu_riche", "TEXT"),
+            ("titre_modifie", "INTEGER DEFAULT 0"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE notes ADD COLUMN {col} {definition}")
+                conn.commit()
+            except Exception:
+                pass  # colonne déjà présente
     finally:
         conn.close()
 
@@ -113,15 +124,23 @@ _PROMPT_RAFFINEMENT = """Tu analyses une fiche de connaissance capturée par un 
 
 Retourne UNIQUEMENT un JSON valide (sans bloc markdown) :
 {{
-  "titre_court": "<3-5 mots, très descriptif, en français correct>",
-  "insight_cle": "<1 phrase qui capture l'essentiel, en français correct>",
-  "resume": "<2 phrases résumant le contenu, en français correct>",
-  "domaine": "<exactement un parmi : Travail | Apprentissage | Projets perso | Jeux vidéos | Plantes | Organisation TDAH>"
+  "titre_court": "<vrai titre de la source si présent dans la fiche (ligne # TITLE ou titre principal), sinon 5-8 mots descriptifs en français>",
+  "insight_cle": "<1 phrase actionnable qui capture l'essentiel, en français>",
+  "resume": "<2-3 phrases résumant le contenu, en français>",
+  "domaine": "<exactement un parmi : Travail | Apprentissage | Projets perso | Jeux vidéos | Plantes | Organisation TDAH>",
+  "contenu_riche": {{
+    "url_source": "<première URL http(s) trouvée dans la fiche, ou null>",
+    "points_cles": ["<bullet 1>", "<bullet 2>", "..."],
+    "pourquoi_garder": "<1-2 phrases sur la valeur long terme, ou null>",
+    "quand_ressortir": "<1 phrase sur le contexte d'utilisation, ou null>"
+  }}
 }}
 
 Règles :
-- Corrige les traductions approximatives — écris un français naturel
-- Garde l'insight qui rend la note utile, ne résume pas au détriment du sens
+- Si la fiche contient déjà des sections POINTS_CLES / POURQUOI_GARDER / QUAND_RESSORTIR → les extraire TELS QUELS sans reformuler
+- Si ces sections sont absentes → les générer à partir du contenu
+- points_cles : liste de 3 à 7 bullets actionnables en français correct
+- Corrige les traductions approximatives
 - Claude Code, VS Code, React, IA, Python, dev → Apprentissage
 - IKEA, shifts, management → Travail
 - Plantes, jardinage → Plantes
@@ -135,23 +154,27 @@ Règles :
 
 
 def raffiner_note(contenu: str, api_key: str) -> dict:
-    """Appelle GPT-4.1 pour raffiner une fiche. Retourne dict avec 4 clés."""
+    """Appelle GPT-4.1 pour raffiner une fiche. Retourne dict avec 5 clés."""
     import re
     prompt = _PROMPT_RAFFINEMENT.format(contenu=contenu[:8000])
-    r      = OpenAI(api_key=api_key).chat.completions.create(
+    r = OpenAI(api_key=api_key).chat.completions.create(
         model="gpt-4.1",
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=400,
+        max_tokens=1200,
     )
-    raw  = r.choices[0].message.content.strip()
-    raw  = re.sub(r"```(?:json)?\s*", "", raw).strip("`").strip()
+    raw = r.choices[0].message.content.strip()
+    raw = re.sub(r"```(?:json)?\s*", "", raw).strip("`").strip()
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
         log.error("raffiner_note: réponse GPT non parseable : %s — %s", raw[:200], e)
         raise
-    if data.get("domaine") not in DOMAINS:
-        data["domaine"] = "Projets perso"
+    # Normaliser contenu_riche
+    if "contenu_riche" not in data or not isinstance(data["contenu_riche"], dict):
+        data["contenu_riche"] = {"url_source": None, "points_cles": [], "pourquoi_garder": None, "quand_ressortir": None}
+    cr = data["contenu_riche"]
+    if not isinstance(cr.get("points_cles"), list):
+        cr["points_cles"] = []
     return data
 
 
@@ -272,7 +295,7 @@ def write_note_du_jour_dropbox(note: dict) -> None:
     log.info("Note du jour Dropbox : %s", payload["titre_court"])
 
 
-def run_agent(db_path: str | Path = DB_PATH) -> None:
+def run_agent(db_path: str | Path = DB_PATH, reprocess: bool = False) -> None:
     api_key = os.environ.get("OPENAI_API_KEY", "")
     if not api_key:
         raise ValueError("OPENAI_API_KEY manquante dans .env")
@@ -290,10 +313,18 @@ def run_agent(db_path: str | Path = DB_PATH) -> None:
         for fiche in fiches_raw:
             note_id  = get_note_id(fiche["path"])
             existing = conn.execute(
-                "SELECT date_traitement FROM notes WHERE id = ?", (note_id,)
+                "SELECT date_traitement, domaine, titre_modifie, titre_court FROM notes WHERE id = ?",
+                (note_id,)
             ).fetchone()
-            if existing and existing["date_traitement"] == fiche["modified"]:
-                continue  # Déjà à jour
+
+            if reprocess:
+                # Sauter les notes Travail déjà classifiées
+                if existing and existing["domaine"] == "Travail":
+                    continue
+            else:
+                if existing and existing["date_traitement"] == fiche["modified"]:
+                    continue
+
             log.info("Traitement : %s", fiche["name"])
             try:
                 import re as _re
@@ -302,17 +333,25 @@ def run_agent(db_path: str | Path = DB_PATH) -> None:
                 embedding = vectoriser(emb_txt, api_key)
                 tag_match = _re.search(r"\*\*TAGS\*\*\s*:\s*(.+)", fiche["content"])
                 tags      = tag_match.group(1).strip() if tag_match else ""
+
+                # Préserver le titre si édité manuellement
+                titre_modifie  = existing["titre_modifie"] if existing else 0
+                titre_final    = existing["titre_court"] if titre_modifie else refined["titre_court"]
+                contenu_riche  = json.dumps(refined.get("contenu_riche", {}), ensure_ascii=False)
+
                 conn.execute("""
                     INSERT OR REPLACE INTO notes
                       (id, dropbox_path, titre_court, insight_cle, resume, domaine,
                        tags, date_capture, date_traitement, score_pertinence,
-                       est_meta_fiche, sources_ids, embedding)
-                    VALUES (?,?,?,?,?,?,?,?,?,0.0,0,NULL,?)
+                       est_meta_fiche, sources_ids, embedding, contenu_riche, titre_modifie)
+                    VALUES (?,?,?,?,?,?,?,?,?,0.0,0,NULL,?,?,?)
                 """, (
                     note_id, fiche["path"],
-                    refined["titre_court"], refined["insight_cle"], refined["resume"], refined["domaine"],
+                    titre_final, refined["insight_cle"], refined["resume"], refined["domaine"],
                     tags, fiche["modified"], fiche["modified"],
                     embedding_to_bytes(embedding),
+                    contenu_riche,
+                    titre_modifie,
                 ))
                 conn.commit()
             except Exception as e:
@@ -382,4 +421,9 @@ def run_agent(db_path: str | Path = DB_PATH) -> None:
 
 
 if __name__ == "__main__":
-    run_agent()
+    import argparse
+    parser = argparse.ArgumentParser(description="Brain Agent — raffinement et vectorisation")
+    parser.add_argument("--reprocess", action="store_true",
+                        help="Re-traiter toutes les notes sauf domaine=Travail")
+    args = parser.parse_args()
+    run_agent(reprocess=args.reprocess)
