@@ -416,14 +416,21 @@ def save_planning(days: dict) -> None:
 # ── Schedulers ────────────────────────────────────────────────────────────────
 
 async def envoyer_meteo_matin(context) -> None:
+    import asyncio
     if not TELEGRAM_CHAT_ID:
         return
-    try:
-        cfg   = load_settings()
-        texte = get_meteo(cfg["lat"], cfg["lon"], cfg["ville"])
-    except Exception as e:
-        log.warning("Erreur météo : %s", e)
-        texte = f"🌡️ Météo indisponible ce matin ({type(e).__name__}: {e})"
+    cfg = load_settings()
+    texte = None
+    for attempt in range(3):
+        try:
+            texte = get_meteo(cfg["lat"], cfg["lon"], cfg["ville"])
+            break
+        except Exception as e:
+            log.warning("Erreur météo (tentative %d/3) : %s", attempt + 1, e)
+            if attempt < 2:
+                await asyncio.sleep(15)
+    if texte is None:
+        texte = "🌡️ Météo indisponible ce matin — open-meteo ne répond pas."
     await context.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=texte, parse_mode="Markdown")
 
 

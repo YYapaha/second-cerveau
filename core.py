@@ -292,7 +292,7 @@ def get_meteo(lat: float, lon: float, ville: str) -> str:
         "precipitation_sum,wind_speed_10m_max,uv_index_max"
         "&current_weather=true&timezone=Europe%2FParis"
     )
-    r = requests.get(url, timeout=10)
+    r = requests.get(url, timeout=30)
     r.raise_for_status()
     d   = r.json()
     cur = d["current_weather"]
