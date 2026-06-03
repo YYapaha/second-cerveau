@@ -1,0 +1,88 @@
+/* ============================================================
+   SECOND CERVEAU — Design tokens
+   Dark-cosmos / glass / node-editor system
+   ============================================================ */
+
+:root {
+  /* ---- Surfaces (warm-neutral void) ---- */
+  --void:        #08080c;
+  --void-2:      #0b0b11;
+  --grid-dot:    rgba(255, 255, 255, 0.035);
+
+  /* glass */
+  --glass:       rgba(255, 255, 255, 0.040);
+  --glass-2:     rgba(255, 255, 255, 0.060);
+  --glass-hi:    rgba(255, 255, 255, 0.090);
+  --stroke:      rgba(255, 255, 255, 0.085);
+  --stroke-hi:   rgba(255, 255, 255, 0.150);
+  --blur:        18px;
+
+  /* ---- Text ---- */
+  --ink:         #f4f4f7;   /* titles */
+  --ink-2:       #a6a6b6;   /* insight / body */
+  --ink-3:       #6a6a7c;   /* meta */
+  --ink-4:       #4a4a5a;   /* faint / corner stats */
+
+  /* ---- Domain accents (oklch — shared L/C, varied hue) ---- */
+  --d-travail:        oklch(0.81 0.13 82);    /* ambre   */
+  --d-apprentissage:  oklch(0.72 0.13 255);   /* bleu    */
+  --d-projets:        oklch(0.72 0.15 25);    /* corail  */
+  --d-jeux:           oklch(0.72 0.15 322);   /* magenta */
+  --d-plantes:        oklch(0.78 0.14 150);   /* vert    */
+  --d-tdah:           oklch(0.77 0.12 200);   /* cyan    */
+  --d-meta:           oklch(0.80 0.04 280);   /* lilas neutre — synthèses */
+  --d-une:            oklch(0.85 0.11 90);    /* doré — à la une */
+
+  /* ---- Radii ---- */
+  --r-card:   16px;
+  --r-inner:  12px;
+  --r-pill:   999px;
+  --r-sm:     9px;
+
+  /* ---- Spacing scale (4-based) ---- */
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 20px; --s6: 24px; --s7: 32px; --s8: 44px;
+
+  /* ---- Shadows ---- */
+  --shadow-card:  0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 30px rgba(0,0,0,0.45);
+  --shadow-float: 0 18px 60px rgba(0,0,0,0.6);
+  --shadow-modal: 0 40px 120px rgba(0,0,0,0.7);
+
+  /* ---- Type ---- */
+  --font-ui:   "Satoshi", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* ---- Motion ---- */
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* utility */
+.mono { font-family: var(--font-mono); }
+.uppercase-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+::selection { background: rgba(255,255,255,0.18); }
+
+/* scrollbars */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 99px; }
+*::-webkit-scrollbar-track { background: transparent; }
