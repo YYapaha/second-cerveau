@@ -460,12 +460,134 @@ function initChat() {
   });
 }
 
-// ── Constellation placeholder (implemented in Task 4) ─────────────────────────
+// ── Constellation ─────────────────────────────────────────────────────────────
+
+let constellationPan = { x: 0, y: 0 };
+let constellationDrag = null;
+let constellationHover = null;
+
+function computeLayout(notes, w, h) {
+  const cx = w / 2, cy = h / 2;
+  const R = Math.min(w, h) * 0.26;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const byDom = {};
+  notes.forEach(n => { (byDom[n.domaine] = byDom[n.domaine] || []).push(n); });
+  const pos = {};
+
+  DOMAIN_ORDER.forEach((dk, di) => {
+    const ang = (di / DOMAIN_ORDER.length) * Math.PI * 2 - Math.PI / 2;
+    const hx = cx + Math.cos(ang) * R;
+    const hy = cy + Math.sin(ang) * R;
+    const list = byDom[dk] || [];
+    const nonMeta = list.filter(n => !n.est_meta);
+    list.forEach((n, i) => {
+      if (n.est_meta) {
+        pos[n.id] = { x: cx + (i - 0.5) * 26, y: cy };
+        return;
+      }
+      const k = nonMeta.length;
+      const a2 = ang + (i - (k - 1) / 2) * 0.5;
+      const rr = 64 + (i % 2) * 22;
+      pos[n.id] = {
+        x: clamp(hx + Math.cos(a2) * rr * 0.55, 96, w - 96),
+        y: clamp(hy + Math.sin(a2) * rr,         84, h - 70),
+      };
+    });
+  });
+
+  const seen = new Set();
+  const edges = [];
+  notes.forEach(n => {
+    (n.liens || []).forEach(tid => {
+      if (!pos[n.id] || !pos[tid]) return;
+      const key = [n.id, tid].sort().join('-');
+      if (seen.has(key)) return;
+      seen.add(key);
+      edges.push({ a: n.id, b: tid, key, color: domainConfig(n.domaine).color });
+    });
+  });
+
+  return { pos, edges };
+}
 
 function renderConstellation() {
   const view = document.getElementById('constel-view');
   view.classList.remove('hidden');
-  view.innerHTML = `<div style="display:grid;place-items:center;height:100%;color:var(--ink-3);font-family:var(--font-mono);font-size:12px">Constellation — Task 4</div>`;
+
+  const notes = state.filteredList;
+  const w = view.clientWidth  || 800;
+  const h = view.clientHeight || 900;
+  const { pos, edges } = computeLayout(notes, w, h);
+  const pan = constellationPan;
+  const hov = constellationHover;
+
+  const edgeSvg = edges.map(e => {
+    const a = pos[e.a], b = pos[e.b];
+    if (!a || !b) return '';
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2 - 28;
+    const lit = hov && (e.a === hov || e.b === hov);
+    const accent = lit ? `style="--accent:${e.color}"` : '';
+    return `<path class="edge${lit ? ' lit' : ''}" ${accent} d="M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}"/>`;
+  }).join('');
+
+  const nodesHtml = notes.map(n => {
+    const p = pos[n.id];
+    if (!p) return '';
+    const dom = domainConfig(n.domaine);
+    const isHov = hov === n.id;
+    return `<div class="cnode${n.est_meta ? ' meta' : ''}${isHov ? ' active' : ''}"
+      data-cid="${n.id}"
+      style="left:${p.x}px;top:${p.y}px;--accent:${dom.color}">
+      <div class="bubble"><span class="ddot"></span><span class="ct">${n.titre}</span></div>
+    </div>`;
+  }).join('');
+
+  const legendHtml = DOMAIN_ORDER.map(d => {
+    const dom = domainConfig(d);
+    return `<div class="li" style="--accent:${dom.color}"><span class="ddot"></span><span>${dom.label}</span></div>`;
+  }).join('');
+
+  view.innerHTML = `
+    <div class="constel" id="constel-inner">
+      <span class="hint">glisser pour naviguer</span>
+      <div class="world" id="constel-world" style="transform:translate(${pan.x}px,${pan.y}px)">
+        <svg class="links">${edgeSvg}</svg>
+        ${nodesHtml}
+      </div>
+      <div class="legend">${legendHtml}</div>
+    </div>
+  `;
+
+  const inner = document.getElementById('constel-inner');
+
+  inner.addEventListener('pointerdown', e => {
+    constellationDrag = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+  });
+  inner.addEventListener('pointermove', e => {
+    if (!constellationDrag) return;
+    constellationPan = { x: e.clientX - constellationDrag.x, y: e.clientY - constellationDrag.y };
+    document.getElementById('constel-world').style.transform =
+      `translate(${constellationPan.x}px,${constellationPan.y}px)`;
+  });
+  inner.addEventListener('pointerup',    () => { constellationDrag = null; });
+  inner.addEventListener('pointerleave', () => { constellationDrag = null; });
+
+  view.querySelectorAll('.cnode').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      constellationHover = el.dataset.cid;
+      renderConstellation();
+    });
+    el.addEventListener('mouseleave', () => {
+      constellationHover = null;
+      renderConstellation();
+    });
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const note = state.filteredList.find(n => n.id === el.dataset.cid);
+      if (note) openModal(note);
+    });
+  });
 }
 
 // ── Render principal ──────────────────────────────────────────────────────────
