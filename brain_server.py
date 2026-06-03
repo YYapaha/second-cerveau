@@ -96,8 +96,10 @@ def delete_note(note_id: str):
         try:
             get_dropbox().files_delete_v2(row["dropbox_path"])
         except Exception as e:
-            conn.close()
-            raise HTTPException(status_code=502, detail=f"Erreur Dropbox : {e}")
+            # Si le fichier n'existe déjà plus sur Dropbox, on peut supprimer de la DB
+            if 'not_found' not in str(e).lower():
+                conn.close()
+                raise HTTPException(status_code=502, detail=f"Erreur Dropbox : {e}")
 
     conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
     conn.commit()
