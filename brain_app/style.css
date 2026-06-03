@@ -384,15 +384,19 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
   flex-shrink: 0;
   border-top: 1px solid var(--stroke);
   background: rgba(255,255,255,0.015);
-  padding: 10px 16px 14px;
+  padding: 0 16px 14px;
   position: relative;
   z-index: 2;
+  height: 160px;
+  display: flex;
+  flex-direction: column;
 }
 
 .blocs-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  max-height: 200px;
+  flex: 1;
+  min-height: 0;
 }
 
 .bloc-col {
@@ -506,3 +510,29 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
 }
 .bloc-add-input:focus { border-color: var(--stroke-hi); }
 .bloc-add-input.hidden { display: none; }
+
+.blocs-resize-handle {
+  flex-shrink: 0;
+  height: 14px;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 -16px;
+  transition: background .15s var(--ease);
+}
+.blocs-resize-handle:hover { background: rgba(255,255,255,0.04); }
+
+.blocs-resize-handle::after {
+  content: "";
+  width: 28px;
+  height: 3px;
+  border-radius: 99px;
+  background: var(--ink-4);
+  box-shadow: 0 -5px 0 var(--ink-4), 0 5px 0 var(--ink-4);
+  transition: background .15s var(--ease), box-shadow .15s var(--ease);
+}
+.blocs-resize-handle:hover::after {
+  background: var(--ink-3);
+  box-shadow: 0 -5px 0 var(--ink-3), 0 5px 0 var(--ink-3);
+}
