@@ -287,8 +287,21 @@ Durée totale : ~500ms. Pas de confirmation (Dropbox intact).
 | `brain_app/renderer.js` | `mapNote`, `renderModal`, `deleteNote`, icônes |
 | `brain_app/style.css` | `.source-link`, `.points-cles`, `.deletebtn` |
 
-## Hors scope
+## Édition du titre (dans ce plan)
 
+Clic sur le titre dans la modale → `<h2>` devient `<input>` éditable → Entrée ou blur → `PATCH /notes/{id}` avec `{ titre_court }` → sauvegarde en DB.
+
+**Protection contre le re-process** : colonne `titre_modifie INTEGER DEFAULT 0`. Quand `titre_modifie = 1`, `raffiner_note` ne touche pas `titre_court` lors du `--reprocess`.
+
+Fichiers impactés :
+- `brain.db` : nouvelle colonne `titre_modifie`
+- `brain_server.py` : endpoint `PATCH /notes/{id}`
+- `brain_agent.py` : skip `titre_court` si `titre_modifie = 1`
+- `brain_app/renderer.js` : titre cliquable/éditable dans `renderModal()`
+- `brain_app/style.css` : `.title-input` style inline discret
+
+## Hors scope (prévu Plan 5)
+
+- Note personnelle avec sync Dropbox (section `## Note personnelle` dans le `.md`)
 - Confirmation avant suppression
-- Édition du contenu depuis l'app
 - Support de plusieurs URLs par fiche
