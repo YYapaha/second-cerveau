@@ -160,3 +160,101 @@ def test_patch_note_titre():
     assert row[0] == "Nouveau Titre"
     assert row[1] == 1
     conn.close()
+
+
+# ── /blocs tests ──────────────────────────────────────────────────────────────
+
+_TRAVAIL_CONTENT = "# Travail\n- task zero ← 01/06/2026 10:00\n- task one ← 02/06/2026 11:00\n"
+_EMPTY_CONTENT   = "# Bloc-notes\n"
+
+
+def _mock_dbx(content_map: dict):
+    """content_map: {dropbox_path: bytes_content}"""
+    mock = MagicMock()
+    def _download(path):
+        dl = MagicMock()
+        dl.content = content_map.get(path, b"# Vide\n")
+        return (None, dl)
+    mock.files_download.side_effect = _download
+    return mock
+
+
+def test_get_blocs_returns_3_blocs():
+    dbx = _mock_dbx({"/Applications/Joplin/travail.md": _TRAVAIL_CONTENT.encode()})
+    with patch("brain_server.get_dropbox", return_value=dbx):
+        r = client.get("/blocs")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 3
+    assert {b["name"] for b in data} == {"travail", "projets", "blocnotes"}
+
+
+def test_get_blocs_parses_items():
+    dbx = _mock_dbx({"/Applications/Joplin/travail.md": _TRAVAIL_CONTENT.encode()})
+    with patch("brain_server.get_dropbox", return_value=dbx):
+        r = client.get("/blocs")
+    travail = next(b for b in r.json() if b["name"] == "travail")
+    assert len(travail["items"]) == 2
+    assert travail["items"][0]["texte"] == "task zero"
+    assert travail["items"][0]["date"] == "01/06/2026 10:00"
+    assert travail["items"][0]["idx"] == 0
+
+
+def test_get_blocs_dropbox_error_returns_empty_items():
+    dbx = MagicMock()
+    dbx.files_download.side_effect = Exception("réseau")
+    with patch("brain_server.get_dropbox", return_value=dbx):
+        r = client.get("/blocs")
+    assert r.status_code == 200
+    for bloc in r.json():
+        assert bloc["items"] == []
+
+
+def test_delete_bloc_item_removes_line():
+    dbx = _mock_dbx({"/Applications/Joplin/travail.md": _TRAVAIL_CONTENT.encode()})
+    with patch("brain_server.get_dropbox", return_value=dbx):
+        r = client.delete("/blocs/travail/0")
+    assert r.status_code == 200
+    assert r.json()["deleted"] is True
+    uploaded = dbx.files_upload.call_args[0][0].decode("utf-8")
+    assert "task zero" not in uploaded
+    assert "task one" in uploaded
+
+
+def test_delete_bloc_item_out_of_range_returns_false():
+    dbx = _mock_dbx({"/Applications/Joplin/travail.md": _TRAVAIL_CONTENT.encode()})
+    with patch("brain_server.get_dropbox", return_value=dbx):
+        r = client.delete("/blocs/travail/99")
+    assert r.status_code == 200
+    assert r.json()["deleted"] is False
+    dbx.files_upload.assert_not_called()
+
+
+def test_delete_bloc_unknown_name_404():
+    with patch("brain_server.get_dropbox", return_value=MagicMock()):
+        r = client.delete("/blocs/inconnu/0")
+    assert r.status_code == 404
+
+
+def test_add_bloc_item_appends_line():
+    dbx = _mock_dbx({"/Applications/Joplin/travail.md": _TRAVAIL_CONTENT.encode()})
+    with patch("brain_server.get_dropbox", return_value=dbx):
+        r = client.post("/blocs/travail/item", json={"texte": "nouvelle tâche"})
+    assert r.status_code == 200
+    assert r.json()["added"] is True
+    assert r.json()["texte"] == "nouvelle tâche"
+    uploaded = dbx.files_upload.call_args[0][0].decode("utf-8")
+    assert "nouvelle tâche" in uploaded
+    assert "←" in uploaded
+
+
+def test_add_bloc_item_empty_texte_422():
+    with patch("brain_server.get_dropbox", return_value=MagicMock()):
+        r = client.post("/blocs/travail/item", json={"texte": "  "})
+    assert r.status_code == 422
+
+
+def test_add_bloc_unknown_name_404():
+    with patch("brain_server.get_dropbox", return_value=MagicMock()):
+        r = client.post("/blocs/inconnu/item", json={"texte": "test"})
+    assert r.status_code == 404

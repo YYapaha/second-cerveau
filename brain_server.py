@@ -1,6 +1,7 @@
 """brain_server.py — API FastAPI locale pour l'Electron Brain App."""
-import os, json, sqlite3
+import os, json, sqlite3, re
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -38,6 +39,106 @@ _SELECT_FIELDS = (
     "domaine, tags, date_capture, score_pertinence, est_meta_fiche, "
     "sources_ids, contenu_riche, titre_modifie"
 )
+
+# ── Blocs fixes ───────────────────────────────────────────────────────────────
+
+_ITEM_RE = re.compile(r'^-\s+(.+?)\s*←\s*(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})\s*$')
+
+BLOCS = {
+    "travail":   "/Applications/Joplin/travail.md",
+    "projets":   "/Applications/Joplin/projet.md",
+    "blocnotes": "/Applications/Joplin/blocnotes.md",
+}
+
+_TITRES = {
+    "travail":   "Travail",
+    "projets":   "Projets",
+    "blocnotes": "Bloc-notes",
+}
+
+
+def _parse_bloc(content: str) -> list[dict]:
+    items, idx = [], 0
+    for line in content.splitlines():
+        line = line.rstrip()
+        if not line.startswith("- "):
+            continue
+        m = _ITEM_RE.match(line)
+        if m:
+            items.append({"idx": idx, "texte": m.group(1), "date": m.group(2)})
+        else:
+            text = line[2:].strip()
+            if text:
+                items.append({"idx": idx, "texte": text, "date": None})
+        idx += 1
+    return items
+
+
+@app.get("/blocs")
+def get_blocs():
+    result = []
+    for name, path in BLOCS.items():
+        items = []
+        try:
+            _, dl = get_dropbox().files_download(path)
+            items = _parse_bloc(dl.content.decode("utf-8", errors="replace"))
+        except Exception:
+            pass
+        result.append({"name": name, "titre": _TITRES[name], "items": items})
+    return result
+
+
+@app.post("/blocs/{name}/item")
+def add_bloc_item(name: str, body: dict):
+    from fastapi import HTTPException
+    import dropbox as dbx_mod
+    if name not in BLOCS:
+        raise HTTPException(status_code=404, detail="Bloc inconnu")
+    texte = (body.get("texte") or "").strip()
+    if not texte:
+        raise HTTPException(status_code=422, detail="texte requis")
+    date_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+    new_line = f"- {texte} ← {date_str}\n"
+    dbx  = get_dropbox()
+    path = BLOCS[name]
+    try:
+        _, dl = dbx.files_download(path)
+        content = dl.content.decode("utf-8", errors="replace")
+    except Exception:
+        content = f"# {_TITRES[name]}\n"
+    if not content.endswith("\n"):
+        content += "\n"
+    content += new_line
+    dbx.files_upload(content.encode("utf-8"), path, mode=dbx_mod.files.WriteMode.overwrite)
+    return {"added": True, "texte": texte, "date": date_str}
+
+
+@app.delete("/blocs/{name}/{idx}")
+def delete_bloc_item(name: str, idx: int):
+    from fastapi import HTTPException
+    import dropbox as dbx_mod
+    if name not in BLOCS:
+        raise HTTPException(status_code=404, detail="Bloc inconnu")
+    dbx  = get_dropbox()
+    path = BLOCS[name]
+    try:
+        _, dl = dbx.files_download(path)
+        content = dl.content.decode("utf-8", errors="replace")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erreur Dropbox : {e}")
+    lines = content.splitlines(keepends=True)
+    item_idx, line_to_remove = 0, None
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("- "):
+            if item_idx == idx:
+                line_to_remove = i
+                break
+            item_idx += 1
+    if line_to_remove is None:
+        return {"deleted": False}
+    lines.pop(line_to_remove)
+    dbx.files_upload("".join(lines).encode("utf-8"), path, mode=dbx_mod.files.WriteMode.overwrite)
+    return {"deleted": True, "name": name, "idx": idx}
 
 
 @app.get("/status")
