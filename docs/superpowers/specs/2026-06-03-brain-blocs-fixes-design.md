@@ -6,7 +6,7 @@
 
 ## Objectif
 
-Afficher en permanence dans l'app les 3 fichiers Dropbox fixes (`travail.md`, `projet.md`, `blocnotes.md`) dans une section fixe en bas de l'écran, avec la possibilité de cocher chaque item (strikethrough immédiat + suppression Dropbox en arrière-plan).
+Afficher en permanence dans l'app les 3 fichiers Dropbox fixes (`travail.md`, `projet.md`, `blocnotes.md`) dans une section fixe en bas de l'écran, avec la possibilité de cocher chaque item (strikethrough immédiat + suppression Dropbox en arrière-plan) et d'ajouter de nouveaux items depuis l'app (synchro Dropbox immédiate).
 
 ---
 
@@ -76,6 +76,18 @@ BLOCS = {
 
 Si un fichier Dropbox est inaccessible → retourner le bloc avec `items: []` (pas d'erreur globale).
 
+#### `POST /blocs/{name}/item`
+
+Body : `{ "texte": "mon nouvel item" }`
+
+1. Valide que `name` est dans `BLOCS` → 404 sinon
+2. Construit la ligne : `- {texte} ← {DD/MM/YYYY HH:MM}` (timestamp = now en heure locale)
+3. Relit le fichier Dropbox, ajoute la ligne à la fin (avant le `\n` final si présent)
+4. Réécrit sur Dropbox (`WriteMode.overwrite`)
+5. Retourne `{"added": true, "texte": texte, "date": "DD/MM/YYYY HH:MM"}`
+
+Le timestamp utilise `datetime.now().strftime("%d/%m/%Y %H:%M")` — même format que le bot Telegram.
+
 #### `DELETE /blocs/{name}/{idx}`
 
 1. Valide que `name` est dans `BLOCS` → 404 sinon
@@ -108,6 +120,21 @@ setState({ ..., blocs: blocsRaw });
 ```
 
 `/blocs` échoue silencieusement (catch → `[]`), n'empêche pas le chargement des notes.
+
+**`addItem(name, texte)` :**
+```javascript
+async function addItem(name, texte) {
+  if (!texte.trim()) return;
+  await fetch(`${API}/blocs/${name}/item`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ texte: texte.trim() }),
+  });
+  // Recharger les blocs pour afficher le nouvel item
+  const blocsRaw = await fetch(`${API}/blocs`).then(r => r.json()).catch(() => state.blocs);
+  setState({ blocs: blocsRaw });
+}
+```
 
 **`checkItem(name, idx)` :**
 ```javascript
@@ -151,6 +178,15 @@ Section fixe en bas de la fenêtre, sous `#notes-grid` :
 │    02/06 11:25           │
 └──────────────────────────┘
 ```
+
+**Bouton `+` et input d'ajout** en bas de chaque colonne :
+- État repos : bouton `+` discret (couleur `var(--ink-4)`)
+- Clic sur `+` → bouton disparaît, input text apparaît avec focus automatique
+- Entrée ou blur → si texte non vide : `addItem()` + masquer input + réafficher `+` ; si vide : juste masquer input
+- Escape → annule et masque l'input
+- Pendant l'envoi : input désactivé + léger `opacity: 0.5`
+
+---
 
 - Hauteur max section : `220px`, `overflow-y: auto` par colonne
 - Colonnes égales : `grid-template-columns: 1fr 1fr 1fr`
@@ -250,8 +286,8 @@ Section fixe en bas de la fenêtre, sous `#notes-grid` :
 
 | Fichier | Changement |
 |---|---|
-| `brain_server.py` | `GET /blocs` + `DELETE /blocs/{name}/{idx}` + constante `BLOCS` |
-| `brain_app/renderer.js` | `blocs` + `checkedItems` dans state, `loadData()` étendu, `checkItem()`, `renderBlocs()` |
+| `brain_server.py` | `GET /blocs` + `POST /blocs/{name}/item` + `DELETE /blocs/{name}/{idx}` + constante `BLOCS` |
+| `brain_app/renderer.js` | `blocs` + `checkedItems` dans state, `loadData()` étendu, `checkItem()`, `addItem()`, `renderBlocs()` |
 | `brain_app/style.css` | `.blocs-section`, `.blocs-grid`, `.bloc-col`, `.bloc-item`, `.bloc-check`, etc. |
 
 ---
@@ -265,7 +301,7 @@ Section fixe en bas de la fenêtre, sous `#notes-grid` :
 
 ## Hors scope
 
-- Ajout d'items depuis l'app (se fait via le bot Telegram)
+- Édition d'un item existant
 - Persistance de l'état coché entre sessions (éphémère volontaire)
 - Réorganisation / drag-and-drop des items
 - Édition du texte d'un item
