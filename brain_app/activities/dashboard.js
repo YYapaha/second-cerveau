@@ -16,6 +16,45 @@ export function create(container) {
   ];
   const BLOB_KEYS = ['b1', 'b2', 'b3'];
 
+  let pts = [];
+
+  function initParticles(W, H) {
+    pts = Array.from({ length: 30 }, () => ({
+      x: Math.random() * W,  y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 0.8, vy: (Math.random() - 0.5) * 0.8,
+      r: 2 + Math.random() * 2,
+    }));
+  }
+
+  function drawParticles() {
+    const W = canvas.width, H = canvas.height;
+    pts.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0 || p.x > W) p.vx *= -1;
+      if (p.y < 0 || p.y > H) p.vy *= -1;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fill();
+    });
+    if (params.lines) {
+      for (let i = 0; i < pts.length; i++) {
+        for (let j = i + 1; j < pts.length; j++) {
+          const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 80) {
+            ctx.beginPath();
+            ctx.strokeStyle = `rgba(255,255,255,${(1 - dist / 80).toFixed(3)})`;
+            ctx.lineWidth = 0.5;
+            ctx.moveTo(pts[i].x, pts[i].y);
+            ctx.lineTo(pts[j].x, pts[j].y);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+  }
+
   container.innerHTML = `
     <canvas id="db-canvas" style="position:absolute;top:0;left:0;width:100%;height:calc(100% - ${PANEL_H}px)"></canvas>
     <div id="db-panel" style="
@@ -38,6 +77,7 @@ export function create(container) {
   function resize() {
     canvas.width  = container.clientWidth;
     canvas.height = container.clientHeight - PANEL_H;
+    if (params.particles && pts.length) initParticles(canvas.width, canvas.height);
   }
   const ro = new ResizeObserver(resize);
   ro.observe(container);
@@ -72,6 +112,8 @@ export function create(container) {
 
     ctx.filter = 'none';
     ctx.globalAlpha = 1;
+
+    if (params.particles) drawParticles();
 
     rafId = requestAnimationFrame(draw);
   }
