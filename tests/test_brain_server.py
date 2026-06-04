@@ -162,6 +162,54 @@ def test_patch_note_titre():
     conn.close()
 
 
+def test_patch_note_domaine_valide():
+    nid = _insert_note(domaine="Apprentissage")
+    resp = client.patch(f"/notes/{nid}", json={"domaine": "Travail"})
+    assert resp.status_code == 200
+    conn = sqlite3.connect(TEST_DB)
+    row = conn.execute("SELECT domaine FROM notes WHERE id = ?", (nid,)).fetchone()
+    assert row[0] == "Travail"
+    conn.close()
+
+
+def test_patch_note_domaine_a_trier():
+    nid = _insert_note(domaine="Apprentissage")
+    resp = client.patch(f"/notes/{nid}", json={"domaine": "À trier"})
+    assert resp.status_code == 200
+    conn = sqlite3.connect(TEST_DB)
+    row = conn.execute("SELECT domaine FROM notes WHERE id = ?", (nid,)).fetchone()
+    assert row[0] == "À trier"
+    conn.close()
+
+
+def test_patch_note_domaine_invalide_422():
+    nid = _insert_note()
+    resp = client.patch(f"/notes/{nid}", json={"domaine": "DomaineInconnu"})
+    assert resp.status_code == 422
+
+
+def test_patch_note_ni_titre_ni_domaine_422():
+    nid = _insert_note()
+    resp = client.patch(f"/notes/{nid}", json={})
+    assert resp.status_code == 422
+
+
+def test_patch_note_titre_et_domaine_ensemble():
+    nid = _insert_note(domaine="Plantes")
+    resp = client.patch(
+        f"/notes/{nid}", json={"titre_court": "Nouveau Titre", "domaine": "Travail"}
+    )
+    assert resp.status_code == 200
+    conn = sqlite3.connect(TEST_DB)
+    row = conn.execute(
+        "SELECT titre_court, domaine, titre_modifie FROM notes WHERE id = ?", (nid,)
+    ).fetchone()
+    assert row[0] == "Nouveau Titre"
+    assert row[1] == "Travail"
+    assert row[2] == 1
+    conn.close()
+
+
 # ── /blocs tests ──────────────────────────────────────────────────────────────
 
 _TRAVAIL_CONTENT = "# Travail\n- task zero ← 01/06/2026 10:00\n- task one ← 02/06/2026 11:00\n"

@@ -10,7 +10,7 @@ from fastapi import FastAPI, Query, HTTPException
 import dropbox as dbx_mod
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
-from brain_agent import init_db as _init_db, get_dropbox
+from brain_agent import init_db as _init_db, get_dropbox, DOMAINS as VALID_DOMAINS
 
 DB_PATH = Path(__file__).parent / "brain.db"
 
@@ -211,17 +211,28 @@ def delete_note(note_id: str):
 
 @app.patch("/notes/{note_id}")
 def patch_note(note_id: str, body: dict):
-    titre = body.get("titre_court", "").strip()
-    if not titre:
-        raise HTTPException(status_code=422, detail="titre_court requis")
+    titre   = body.get("titre_court", "").strip()
+    domaine = body.get("domaine", "").strip()
+
+    if not titre and not domaine:
+        raise HTTPException(status_code=422, detail="titre_court ou domaine requis")
+    if domaine and domaine not in VALID_DOMAINS:
+        raise HTTPException(status_code=422, detail=f"domaine invalide : {domaine}")
+
     conn = get_db()
-    conn.execute(
-        "UPDATE notes SET titre_court = ?, titre_modifie = 1 WHERE id = ?",
-        (titre, note_id)
-    )
+    if titre:
+        conn.execute(
+            "UPDATE notes SET titre_court = ?, titre_modifie = 1 WHERE id = ?",
+            (titre, note_id)
+        )
+    if domaine:
+        conn.execute(
+            "UPDATE notes SET domaine = ? WHERE id = ?",
+            (domaine, note_id)
+        )
     conn.commit()
     conn.close()
-    return {"updated": note_id, "titre_court": titre}
+    return {"updated": note_id, "titre_court": titre or None, "domaine": domaine or None}
 
 
 @app.post("/chat")
