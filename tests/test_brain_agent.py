@@ -39,16 +39,16 @@ from unittest.mock import patch, MagicMock
 
 def test_raffiner_note_returns_expected_keys():
     from brain_agent import raffiner_note
-    mock_resp = MagicMock()
-    mock_resp.choices[0].message.content = json.dumps({
+    import json
+    from unittest.mock import patch
+    mock_json = json.dumps({
         "titre_court": "Tips Claude Code",
         "insight_cle": "Les hooks automatisent les actions post-outil.",
         "resume":      "Claude Code supporte des hooks configurables. Ils déclenchent des scripts shell.",
         "domaine":     "Apprentissage",
     })
-    with patch("brain_agent.OpenAI") as MockOpenAI:
-        MockOpenAI.return_value.chat.completions.create.return_value = mock_resp
-        result = raffiner_note("contenu de test", "fake-key")
+    with patch("core.appeler_groq", return_value=mock_json):
+        result = raffiner_note("contenu de test")
     assert result["titre_court"] == "Tips Claude Code"
     assert result["domaine"]     == "Apprentissage"
     assert "insight_cle" in result
@@ -136,7 +136,8 @@ def test_init_db_has_new_columns():
 
 def test_raffiner_note_returns_contenu_riche():
     from brain_agent import raffiner_note
-    from unittest.mock import patch, MagicMock
+    import json
+    from unittest.mock import patch
     mock_out = {
         "titre_court": "Astuces Claude Code",
         "insight_cle": "Personnaliser pour maximiser.",
@@ -149,11 +150,8 @@ def test_raffiner_note_returns_contenu_riche():
             "quand_ressortir": "Avant un projet."
         }
     }
-    with patch("brain_agent.OpenAI") as mock_cls:
-        inst = MagicMock()
-        mock_cls.return_value = inst
-        inst.chat.completions.create.return_value.choices[0].message.content = json.dumps(mock_out)
-        result = raffiner_note("Contenu test", "fake-key")
+    with patch("core.appeler_groq", return_value=json.dumps(mock_out)):
+        result = raffiner_note("Contenu test")
     assert "contenu_riche" in result
     cr = result["contenu_riche"]
     assert isinstance(cr["points_cles"], list)

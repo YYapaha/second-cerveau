@@ -153,23 +153,19 @@ Règles :
 === FIN DE LA FICHE ==="""
 
 
-def raffiner_note(contenu: str, api_key: str) -> dict:
-    """Appelle GPT-4.1 pour raffiner une fiche. Retourne dict avec 5 clés."""
+def raffiner_note(contenu: str) -> dict:
+    """Appelle Groq pour raffiner une fiche. Retourne dict avec 5 clés."""
     import re
+    from core import appeler_groq
     prompt = _PROMPT_RAFFINEMENT.format(contenu=contenu[:8000])
-    r = OpenAI(api_key=api_key).chat.completions.create(
-        model="gpt-4.1",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=1200,
-    )
-    raw = r.choices[0].message.content.strip()
+    messages = [{"role": "user", "content": prompt}]
+    raw = appeler_groq(messages, max_tokens=1200).strip()
     raw = re.sub(r"```(?:json)?\s*", "", raw).strip("`").strip()
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
-        log.error("raffiner_note: réponse GPT non parseable : %s — %s", raw[:200], e)
+        log.error("raffiner_note: réponse non parseable : %s — %s", raw[:200], e)
         raise
-    # Normaliser contenu_riche
     if "contenu_riche" not in data or not isinstance(data["contenu_riche"], dict):
         data["contenu_riche"] = {"url_source": None, "points_cles": [], "pourquoi_garder": None, "quand_ressortir": None}
     cr = data["contenu_riche"]
@@ -246,9 +242,10 @@ def detecter_clusters(
     return clusters
 
 
-def generer_meta_fiche(notes: list[dict], api_key: str) -> dict:
-    """Synthèse GPT-4.1 d'un cluster. Retourne dict avec titre, insight, resume, domaine, sources_ids."""
+def generer_meta_fiche(notes: list[dict]) -> dict:
+    """Synthèse d'un cluster via Groq. Retourne dict avec titre, insight, resume, domaine, sources_ids."""
     import re
+    from core import appeler_groq
     extraits = "\n\n".join(
         f"Note {i+1} — {n['titre_court']}:\n{n['insight_cle']}"
         for i, n in enumerate(notes[:8])
@@ -259,16 +256,13 @@ def generer_meta_fiche(notes: list[dict], api_key: str) -> dict:
         '{{"titre_court":"<4-6 mots>","insight_cle":"<2-3 phrases>","resume":"<paragraphe>","domaine":"<domaine commun>"}}\n\n'
         f"Notes :\n{extraits}"
     )
-    r    = OpenAI(api_key=api_key).chat.completions.create(
-        model="gpt-4.1",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=500,
-    )
-    raw  = re.sub(r"```(?:json)?\s*", "", r.choices[0].message.content.strip()).strip("`").strip()
+    messages = [{"role": "user", "content": prompt}]
+    raw = appeler_groq(messages, max_tokens=500).strip()
+    raw = re.sub(r"```(?:json)?\s*", "", raw).strip("`").strip()
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
-        log.error("generer_meta_fiche: réponse GPT non parseable : %s — %s", raw[:200], e)
+        log.error("generer_meta_fiche: réponse non parseable : %s — %s", raw[:200], e)
         raise
     if data.get("domaine") not in DOMAINS:
         data["domaine"] = notes[0].get("domaine", "Projets perso")
@@ -297,6 +291,7 @@ def write_note_du_jour_dropbox(note: dict) -> None:
 
 def run_agent(db_path: str | Path = DB_PATH, reprocess: bool = False) -> None:
     api_key = os.environ.get("OPENAI_API_KEY", "")
+    # api_key utilisé uniquement pour vectoriser() — Groq n'a pas d'API embeddings
     if not api_key:
         raise ValueError("OPENAI_API_KEY manquante dans .env")
 
@@ -330,7 +325,7 @@ def run_agent(db_path: str | Path = DB_PATH, reprocess: bool = False) -> None:
             log.info("Traitement : %s", fiche["name"])
             try:
                 import re as _re
-                refined   = raffiner_note(fiche["content"], api_key)
+                refined   = raffiner_note(fiche["content"])
                 emb_txt   = f"{refined['titre_court']} {refined['insight_cle']} {refined['resume']}"
                 embedding = vectoriser(emb_txt, api_key)
                 tag_match = _re.search(r"\*\*TAGS\*\*\s*:\s*(.+)", fiche["content"])
@@ -373,7 +368,7 @@ def run_agent(db_path: str | Path = DB_PATH, reprocess: bool = False) -> None:
             if conn.execute("SELECT 1 FROM notes WHERE id = ?", (meta_id,)).fetchone():
                 continue
             try:
-                meta = generer_meta_fiche(cluster, api_key)
+                meta = generer_meta_fiche(cluster)
                 emb  = vectoriser(f"{meta['titre_court']} {meta['insight_cle']}", api_key)
                 now  = datetime.now().isoformat()
                 conn.execute("""
