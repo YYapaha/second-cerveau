@@ -173,7 +173,7 @@ def get_notes(
     return [dict(r) for r in rows]
 
 
-@app.get("/a-la-une")
+@app.get("/a-la-une")  # inutilisé — le frontend filtre state.notes directement
 def get_a_la_une(limit: int = Query(5, ge=1, le=10)):
     conn = get_db()
     rows = conn.execute(
