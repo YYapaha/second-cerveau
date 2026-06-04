@@ -1,6 +1,6 @@
 # Zen — Tableau de bord Aurora
 **Date :** 2026-06-04
-**Statut :** Approuvé
+**Statut :** Implémenté — livré le 2026-06-04, poussé sur `origin/master` (commits `e70c313`→`249f300`)
 
 ---
 
