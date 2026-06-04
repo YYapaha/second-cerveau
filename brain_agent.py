@@ -153,6 +153,43 @@ Règles :
 === FIN DE LA FICHE ==="""
 
 
+def parser_note(contenu: str) -> dict:
+    """Parse une fiche Markdown → dict structuré. Remplace raffiner_note(), aucun appel LLM."""
+    import re
+    from core import extraire_champ
+
+    titre   = extraire_champ(contenu, "TITRE") or "Note sans titre"
+    insight = extraire_champ(contenu, "IDEE_PRINCIPALE") or ""
+    resume  = extraire_champ(contenu, "Résumé 30 secondes") or ""
+
+    domaine = extraire_champ(contenu, "DOMAINE")
+    if domaine not in DOMAINS:
+        domaine = "Projets perso"
+
+    points_raw = extraire_champ(contenu, "POINTS_CLES")
+    points_cles = [
+        line.lstrip("- ").strip()
+        for line in points_raw.splitlines()
+        if line.strip().startswith("-")
+    ] if points_raw else []
+
+    url_match  = re.search(r"https?://[^\s\)\]]+", contenu)
+    url_source = url_match.group(0).rstrip(".,") if url_match else None
+
+    return {
+        "titre_court": titre,
+        "insight_cle": insight,
+        "resume":      resume,
+        "domaine":     domaine,
+        "contenu_riche": {
+            "url_source":      url_source,
+            "points_cles":     points_cles,
+            "pourquoi_garder": extraire_champ(contenu, "POURQUOI_GARDER") or None,
+            "quand_ressortir": extraire_champ(contenu, "QUAND_RESSORTIR") or None,
+        },
+    }
+
+
 def raffiner_note(contenu: str) -> dict:
     """Appelle Groq pour raffiner une fiche. Retourne dict avec 5 clés."""
     import re
@@ -324,12 +361,11 @@ def run_agent(db_path: str | Path = DB_PATH, reprocess: bool = False) -> None:
 
             log.info("Traitement : %s", fiche["name"])
             try:
-                import re as _re
-                refined   = raffiner_note(fiche["content"])
+                refined   = parser_note(fiche["content"])
                 emb_txt   = f"{refined['titre_court']} {refined['insight_cle']} {refined['resume']}"
                 embedding = vectoriser(emb_txt, api_key)
-                tag_match = _re.search(r"\*\*TAGS\*\*\s*:\s*(.+)", fiche["content"])
-                tags      = tag_match.group(1).strip() if tag_match else ""
+                from core import extraire_champ as _ec
+                tags      = _ec(fiche["content"], "TAGS")
 
                 # Préserver le titre si édité manuellement
                 titre_modifie  = existing["titre_modifie"] if existing else 0

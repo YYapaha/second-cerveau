@@ -156,3 +156,107 @@ def test_raffiner_note_returns_contenu_riche():
     cr = result["contenu_riche"]
     assert isinstance(cr["points_cles"], list)
     assert cr["url_source"] == "https://github.com/test"
+
+
+# ── parser_note — remplace raffiner_note sans appel LLM ─────────────────────
+
+_FICHE_COMPLETE = """\
+# Claude Code — hooks pre-tool, MCP servers (github.com/ykdojo 2026-06)
+
+[https://github.com/ykdojo/tips](https://github.com/ykdojo/tips)
+
+## Résumé 30 secondes
+Article présentant 45 astuces Claude Code. Focus sur les hooks et le contexte.
+
+## Contenu essentiel
+Liste des éléments concrets avec leurs noms exacts.
+
+---
+**POURQUOI_GARDER** : Script context-bar.sh permet de surveiller les tokens.
+**IDEE_PRINCIPALE** : Les 45 tips couvrent les slash commands /usage /mcp /stats.
+**POINTS_CLES** :
+- /compact : résume la conversation pour libérer du contexte
+- context-bar.sh : script bash personnalisable affichant modèle et % tokens
+**QUAND_RESSORTIR** : Quand je configure un nouvel environnement Claude Code.
+**TYPE** : Tutoriel
+**DOMAINE** : Apprentissage
+**TAGS** : #claude-code #slash-commands
+**DATE** : 04/06/2026 14:30
+"""
+
+
+def test_parser_note_retourne_structure_complete():
+    from brain_agent import parser_note
+    result = parser_note(_FICHE_COMPLETE)
+    assert "titre_court"  in result
+    assert "insight_cle"  in result
+    assert "resume"       in result
+    assert "domaine"      in result
+    assert "contenu_riche" in result
+    cr = result["contenu_riche"]
+    assert "url_source"      in cr
+    assert "points_cles"     in cr
+    assert "pourquoi_garder" in cr
+    assert "quand_ressortir" in cr
+
+
+def test_parser_note_extrait_titre():
+    from brain_agent import parser_note
+    result = parser_note(_FICHE_COMPLETE)
+    assert "Claude Code" in result["titre_court"]
+    assert "hooks" in result["titre_court"]
+
+
+def test_parser_note_extrait_domaine_valide():
+    from brain_agent import parser_note
+    result = parser_note(_FICHE_COMPLETE)
+    assert result["domaine"] == "Apprentissage"
+
+
+def test_parser_note_domaine_invalide_fallback():
+    from brain_agent import parser_note
+    fiche_sans_domaine = "# Note sans domaine\n**TAGS** : #test\n**DOMAINE** : DomaineInconnu\n"
+    result = parser_note(fiche_sans_domaine)
+    assert result["domaine"] == "Projets perso"
+
+
+def test_parser_note_domaine_absent_fallback():
+    from brain_agent import parser_note
+    fiche_sans_domaine = "# Note sans domaine\n**TAGS** : #test\n"
+    result = parser_note(fiche_sans_domaine)
+    assert result["domaine"] == "Projets perso"
+
+
+def test_parser_note_points_cles_comme_liste():
+    from brain_agent import parser_note
+    result = parser_note(_FICHE_COMPLETE)
+    pts = result["contenu_riche"]["points_cles"]
+    assert isinstance(pts, list)
+    assert len(pts) == 2
+    assert any("/compact" in p for p in pts)
+    assert any("context-bar.sh" in p for p in pts)
+
+
+def test_parser_note_extrait_url_source():
+    from brain_agent import parser_note
+    result = parser_note(_FICHE_COMPLETE)
+    assert result["contenu_riche"]["url_source"] == "https://github.com/ykdojo/tips"
+
+
+def test_parser_note_extrait_insight_depuis_idee_principale():
+    from brain_agent import parser_note
+    result = parser_note(_FICHE_COMPLETE)
+    assert "slash commands" in result["insight_cle"]
+
+
+def test_parser_note_extrait_resume():
+    from brain_agent import parser_note
+    result = parser_note(_FICHE_COMPLETE)
+    assert "45 astuces" in result["resume"]
+
+
+def test_parser_note_sans_url_retourne_none():
+    from brain_agent import parser_note
+    fiche = "# Note locale\n**DOMAINE** : Plantes\n**IDEE_PRINCIPALE** : Des plantes.\n"
+    result = parser_note(fiche)
+    assert result["contenu_riche"]["url_source"] is None
