@@ -519,18 +519,18 @@ function renderModal() {
               <span class="domlabel">${note.est_meta ? 'Synthèse · ' : ''}${dom.label}</span>
               <span class="domain-edit-hint">✎</span>
             </div>
-            <div class="domain-picker hidden" id="modal-domain-picker">
-              ${DOMAIN_ORDER.map(d => {
-                const dc = domainConfig(d);
-                const isActive = d === note.domaine;
-                return `<button class="dpill${isActive ? ' active' : ''}" data-domain="${d}" style="--accent:${dc.color}"><span class="ddot"></span>${dc.label}</button>`;
-              }).join('')}
-            </div>
             ${sourceLinkHtml}
             <h2 id="modal-title" class="title-editable" contenteditable="true" spellcheck="false">${note.titre}</h2>
           </div>
         </div>
         <div class="mbody">
+          <div class="domain-picker hidden" id="modal-domain-picker">
+            ${DOMAIN_ORDER.map(d => {
+              const dc = domainConfig(d);
+              const isActive = d === note.domaine;
+              return `<button class="dpill${isActive ? ' active' : ''}" data-domain="${d}" style="--accent:${dc.color}"><span class="ddot"></span>${dc.label}</button>`;
+            }).join('')}
+          </div>
           <div class="insight-box"><div class="bar"></div><div class="it">${note.insight}</div></div>
           <div class="blocklabel">Résumé</div>
           <div class="resume">${note.resume || ''}</div>
