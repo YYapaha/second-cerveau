@@ -6,7 +6,7 @@ const ACTIVITIES = [
   { id: 'breath',    icon: '🫁', label: 'Respir.',   module: () => import('./activities/breath.js') },
   { id: 'particles', icon: '✨', label: 'Particles', module: null },
   { id: 'bubbles',   icon: '🫧', label: 'Bulles',    module: null },
-  { id: 'sliders',   icon: '🎚️', label: 'Tableau',   module: null },
+  { id: 'sliders',   icon: '🎚️', label: 'Tableau',   module: () => import('./activities/dashboard.js') },
   { id: 'fluid',     icon: '🌊', label: 'Fluide',    module: null },
   { id: 'ripple',    icon: '💧', label: 'Ondules',   module: null },
   { id: 'kaleido',   icon: '🔮', label: 'Kaleido',   module: null },
