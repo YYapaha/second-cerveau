@@ -566,27 +566,33 @@ function renderModal() {
 
   domrow.addEventListener('click', (e) => {
     e.stopPropagation();
+    const opening = picker.classList.contains('hidden');
     picker.classList.toggle('hidden');
-  });
-
-  picker.querySelectorAll('.dpill').forEach(pill => {
-    pill.addEventListener('click', (e) => {
-      e.stopPropagation();
-      picker.classList.add('hidden');
-      patchDomaine(note, pill.dataset.domain);
-    });
-  });
-
-  const onDocClick = (e) => {
-    if (!document.getElementById('modal-domain-picker')) {
-      document.removeEventListener('mousedown', onDocClick);
-      return;
+    if (opening) {
+      animate(picker.querySelectorAll('.dpill'), {
+        opacity: [0, 1], translateY: ['-6px', '0px'],
+        delay: stagger(28), duration: 200, ease: 'outCubic',
+      });
     }
+  });
+
+  // Délégation : un seul listener sur le picker couvre tous les pills (y compris les spans enfants)
+  picker.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const pill = e.target.closest('.dpill');
+    if (!pill) return;
+    picker.classList.add('hidden');
+    patchDomaine(note, pill.dataset.domain);
+  });
+
+  // Ferme le picker en cliquant ailleurs dans la modale — pas de zombie sur document
+  const modal = document.querySelector('#modal-scrim .modal');
+  modal.addEventListener('click', (e) => {
+    if (picker.classList.contains('hidden')) return;
     if (!picker.contains(e.target) && !domrow.contains(e.target)) {
       picker.classList.add('hidden');
     }
-  };
-  document.addEventListener('mousedown', onDocClick);
+  });
 
   const srcBtn = document.getElementById('modal-source-link');
   if (srcBtn && note.url_source) {
