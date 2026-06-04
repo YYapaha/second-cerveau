@@ -101,15 +101,20 @@ def extraire_image(chemin: str) -> str:
 
 
 def extraire_audio(chemin: str) -> str:
-    print("⏳ Transcription audio (Whisper local)...")
-    try:
-        import whisper
-    except ImportError:
-        raise ImportError("❌ openai-whisper non installé. Décommentez-le dans requirements.txt.")
-    model = whisper.load_model("tiny")
-    result = model.transcribe(chemin)
+    print("⏳ Transcription audio (Groq Whisper API)...")
+    from groq import Groq
+    from pathlib import Path as _Path
+    api_key = os.environ.get("GROQ_API_KEY", "")
+    if not api_key:
+        raise ValueError("❌ GROQ_API_KEY manquante dans le fichier .env")
+    client = Groq(api_key=api_key)
+    with open(chemin, "rb") as f:
+        result = client.audio.transcriptions.create(
+            model="whisper-large-v3",
+            file=(_Path(chemin).name, f),
+        )
     print("✅ Audio transcrit")
-    return result["text"][:LIMITE_EXTRACTION]
+    return result.text[:LIMITE_EXTRACTION]
 
 
 def extraire_texte_fichier(chemin: str) -> str:

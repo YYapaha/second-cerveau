@@ -1,12 +1,14 @@
 # Obligatoires
+groq>=0.9.0
 openai>=1.0.0
 requests>=2.34.2
 trafilatura>=2.0.0
 python-dotenv>=1.2.1
+watchdog>=6.0.0            # Surveillance dossier inbox
+python-telegram-bot>=22.7  # Bot Telegram
 
 # Optionnels (décommenter selon besoin)
 # PyMuPDF>=1.27.0            # Extraction PDF
-# Pillow>=12.2.0             # Manipulation images
-openai-whisper>=20250625   # Transcription audio (local)
-watchdog>=6.0.0            # Surveillance dossier inbox
-python-telegram-bot>=22.7  # Bot Telegram
+# Pillow>=12.2.0             # Manipulation images (pour analyse via OpenAI Vision)
+# openai-whisper>=20250625   # Transcription audio LOCAL (remplacé par Groq Whisper API)
+# ffmpeg                     # Requis par openai-whisper local uniquement
