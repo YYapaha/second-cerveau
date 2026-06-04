@@ -3,7 +3,6 @@ Script one-shot : ajoute un TITRE aux fiches qui n'en ont pas, puis renomme.
 """
 import os
 import sys
-import re
 import time
 from pathlib import Path
 from dotenv import load_dotenv
