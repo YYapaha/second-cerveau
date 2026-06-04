@@ -21,6 +21,13 @@ from telegram.ext import (
     filters,
 )
 
+_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+if _CHAT_ID:
+    _CHAT_FILTER = filters.Chat(int(_CHAT_ID))
+else:
+    _CHAT_FILTER = filters.ALL
+    print("⚠️  TELEGRAM_CHAT_ID non défini — toutes les conversations acceptées.")
+
 from capture import recuperer_contenu, analyser_contenu, sauvegarder_fiche
 
 logging.basicConfig(
@@ -181,13 +188,13 @@ def main() -> None:
 
     app = Application.builder().token(token).build()
 
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("help", cmd_help))
-    app.add_handler(CommandHandler("dernieres", cmd_dernieres))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, traiter_message))
-    app.add_handler(MessageHandler(filters.PHOTO, traiter_photo))
-    app.add_handler(MessageHandler(filters.Document.ALL, traiter_document))
-    app.add_handler(MessageHandler(filters.VOICE, traiter_vocal))
+    app.add_handler(CommandHandler("start",     cmd_start,     filters=_CHAT_FILTER))
+    app.add_handler(CommandHandler("help",      cmd_help,      filters=_CHAT_FILTER))
+    app.add_handler(CommandHandler("dernieres", cmd_dernieres, filters=_CHAT_FILTER))
+    app.add_handler(MessageHandler(_CHAT_FILTER & filters.TEXT & ~filters.COMMAND, traiter_message))
+    app.add_handler(MessageHandler(_CHAT_FILTER & filters.PHOTO,                   traiter_photo))
+    app.add_handler(MessageHandler(_CHAT_FILTER & filters.Document.ALL,            traiter_document))
+    app.add_handler(MessageHandler(_CHAT_FILTER & filters.VOICE,                   traiter_vocal))
 
     print("🤖 Bot Telegram démarré. Ctrl+C pour arrêter.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
