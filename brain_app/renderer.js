@@ -12,8 +12,9 @@ const DOMAINS = {
   'Jeux vidéos':       { key: 'jeux',          label: 'Jeux vidéos',   color: 'var(--d-jeux)' },
   'Plantes':           { key: 'plantes',       label: 'Plantes',       color: 'var(--d-plantes)' },
   'Organisation TDAH': { key: 'tdah',          label: 'Organisation',  color: 'var(--d-tdah)' },
+  'À trier': { key: 'trier', label: 'À trier', color: 'var(--d-trier)' },
 };
-const DOMAIN_ORDER = ['Travail', 'Apprentissage', 'Projets perso', 'Jeux vidéos', 'Plantes', 'Organisation TDAH'];
+const DOMAIN_ORDER = ['Travail', 'Apprentissage', 'Projets perso', 'Jeux vidéos', 'Plantes', 'Organisation TDAH', 'À trier'];
 const META_DOM = { key: 'meta', label: 'Méta-fiches', color: 'var(--d-meta)' };
 
 // ── SVG Icons ─────────────────────────────────────────────────────────────────
@@ -30,6 +31,9 @@ const ICONS = {
   </svg>`,
   star: `<svg viewBox="0 0 24 24" fill="none" width="13" height="13">
     <path d="M12 3l2.4 5.6 6 .5-4.6 4 1.4 5.9L12 16.9 6.8 19l1.4-5.9L3.6 9.1l6-.5L12 3z" fill="currentColor"/>
+  </svg>`,
+  trier: `<svg viewBox="0 0 24 24" fill="none" width="13" height="13">
+    <path d="M3 6h18M7 12h10M11 18h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
   </svg>`,
   spark: `<svg viewBox="0 0 24 24" fill="none" width="17" height="17">
     <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
@@ -82,7 +86,6 @@ const ICONS = {
 let state = {
   mode: 'grille',
   notes: [],
-  featured: [],
   blocs: [],                    // ← add
   checkedItems: new Set(),      // ← add
   status: { total_notes: 0, meta_fiches_count: 0, last_sync: null },
@@ -177,7 +180,8 @@ function mapNote(raw) {
 
 function renderTopbar() {
   document.getElementById('logo-slot').innerHTML = ICONS.logo;
-  document.getElementById('star-icon').innerHTML = ICONS.star;
+  const trierIconEl = document.getElementById('trier-icon');
+  if (trierIconEl) trierIconEl.innerHTML = ICONS.trier;
   document.getElementById('spark-icon').innerHTML = ICONS.spark;
 
   const btnG = document.getElementById('btn-grille');
@@ -211,29 +215,35 @@ function renderTopbar() {
     `<span class="dot"></span>${total_notes} notes · ${meta_fiches_count} synthèse${meta_fiches_count !== 1 ? 's' : ''}`;
 }
 
-// ── Render: featured cards ────────────────────────────────────────────────────
+// ── Render: section À trier ───────────────────────────────────────────────────
 
-function renderFeatured() {
+function renderATrier() {
   const container = document.getElementById('featured-cards');
-  if (!state.featured.length) { container.innerHTML = ''; return; }
+  const head = document.getElementById('une-head');
+  const trier = state.notes.filter(n => n.domaine === 'À trier');
 
-  container.innerHTML = state.featured.map(n => {
-    const dom = domainConfig(n.domaine);
-    return `<div class="fcard" data-id="${n.id}" style="--accent:${dom.color}" tabindex="0" role="button">
+  if (!trier.length) {
+    container.innerHTML = '';
+    head.classList.add('hidden');
+    return;
+  }
+
+  head.classList.remove('hidden');
+  container.innerHTML = trier.map(n => `
+    <div class="fcard" data-id="${n.id}" style="--accent:var(--d-trier)" tabindex="0" role="button">
       <div class="glow"></div>
       <div class="ftitle">${n.titre}</div>
       <div class="finsight">${n.insight}</div>
       <div class="fmeta">
         <span class="ddot"></span>
-        <span class="metatime">${dom.label.toLowerCase()}</span>
+        <span class="metatime">à trier</span>
         <span class="metatime" style="margin-left:auto">${relTime(n._days)}</span>
       </div>
-    </div>`;
-  }).join('');
+    </div>`).join('');
 
   container.querySelectorAll('.fcard').forEach(el => {
     el.addEventListener('click', () => {
-      const note = state.featured.find(n => n.id === el.dataset.id);
+      const note = trier.find(n => n.id === el.dataset.id);
       if (note) openModal(note);
     });
   });
@@ -411,7 +421,6 @@ async function deleteNote(note) {
   setState({
     openNote: null,
     notes:    state.notes.filter(n => n.id !== note.id),
-    featured: state.featured.filter(n => n.id !== note.id),
   });
 }
 
@@ -427,7 +436,6 @@ async function patchTitre(note, newTitre) {
     const update = n => n.id === note.id ? { ...n, titre: newTitre.trim(), titre_modifie: true } : n;
     setState({
       notes:    state.notes.map(update),
-      featured: state.featured.map(update),
       openNote: state.openNote?.id === note.id ? { ...state.openNote, titre: newTitre.trim() } : state.openNote,
     });
   } catch { /* silencieux */ }
@@ -717,7 +725,7 @@ function renderConstellation() {
 function renderGrille() {
   document.getElementById('grille-view').classList.remove('hidden');
   document.getElementById('constel-view').classList.add('hidden');
-  renderFeatured();
+  renderATrier();
   renderFilters();
   renderSections();
   renderCornerStats();
@@ -898,9 +906,8 @@ async function loadData(silent = true) {
   const savedScroll = scrollEl ? scrollEl.scrollTop : 0;
 
   try {
-    const [statusData, featuredRaw, notesRaw, blocsRaw] = await Promise.all([
+    const [statusData, notesRaw, blocsRaw] = await Promise.all([
       fetch(`${API}/status`).then(r => r.json()),
-      fetch(`${API}/a-la-une?limit=6`).then(r => r.json()),
       fetch(`${API}/notes?limit=200`).then(r => r.json()),
       fetch(`${API}/blocs`).then(r => r.json()).catch(() => []),
     ]);
@@ -908,7 +915,6 @@ async function loadData(silent = true) {
     setState({
       status: statusData,
       notes: notesRaw.map(mapNote),
-      featured: featuredRaw.map(mapNote),
       blocs: blocsRaw,
     });
     state._silent = false;
