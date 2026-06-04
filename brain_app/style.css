@@ -105,6 +105,14 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
 .modeswitch button.active { background: var(--glass-hi); color: var(--ink); }
 .modeswitch button:hover:not(.active) { color: var(--ink-2); }
 .modeswitch svg { width: 13px; height: 13px; }
+#btn-refresh { all: unset; cursor: pointer; width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r-pill); background: var(--glass); border: 1px solid var(--stroke);
+  color: var(--ink-3); transition: color .25s var(--ease), background .25s var(--ease), border-color .25s var(--ease);
+  flex: 0 0 auto; }
+#btn-refresh:hover { color: var(--ink-2); background: var(--glass-2); border-color: var(--stroke-hi); }
+#btn-refresh.spinning svg { animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ============================================================
    Scroll body

@@ -71,6 +71,10 @@ const ICONS = {
   externalLink: `<svg viewBox="0 0 24 24" fill="none" width="12" height="12">
     <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`,
+  refresh: `<svg viewBox="0 0 24 24" fill="none" width="14" height="14">
+    <path d="M4 4v5h5M20 20v-5h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M4 9a9 9 0 0115.36-3.36L20 9M4 15a9 9 0 0015.36 3.36L20 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  </svg>`,
 };
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -193,6 +197,15 @@ function renderTopbar() {
     btnG._bound = true;
   }
 
+  const btnR = document.getElementById('btn-refresh');
+  if (btnR) {
+    btnR.innerHTML = ICONS.refresh;
+    if (!btnR._bound) {
+      btnR.addEventListener('click', () => loadData(false));
+      btnR._bound = true;
+    }
+  }
+
   const { total_notes, meta_fiches_count } = state.status;
   document.getElementById('pill-stat').innerHTML =
     `<span class="dot"></span>${total_notes} notes · ${meta_fiches_count} synthèse${meta_fiches_count !== 1 ? 's' : ''}`;
@@ -225,10 +238,12 @@ function renderFeatured() {
     });
   });
 
-  animate(container.querySelectorAll('.fcard'), {
-    opacity: [0, 1], translateY: ['10px', '0px'],
-    delay: stagger(40), duration: 500, ease: 'outQuart',
-  });
+  if (!state._silent) {
+    animate(container.querySelectorAll('.fcard'), {
+      opacity: [0, 1], translateY: ['10px', '0px'],
+      delay: stagger(40), duration: 500, ease: 'outQuart',
+    });
+  }
 }
 
 // ── Render: filters ───────────────────────────────────────────────────────────
@@ -298,7 +313,7 @@ function renderSections() {
   });
 
   const cards = container.querySelectorAll('.ncard');
-  if (cards.length) {
+  if (cards.length && !state._silent) {
     animate(cards, { opacity: [0, 1], translateY: ['8px', '0px'], delay: stagger(30), duration: 380, ease: 'outCubic' });
   }
 }
@@ -870,7 +885,18 @@ function renderBlocItem(name, { idx, texte, date }) {
 
 // ── Data fetch ────────────────────────────────────────────────────────────────
 
-async function loadData() {
+let _loadingData = false;
+
+async function loadData(silent = true) {
+  if (_loadingData) return;
+  _loadingData = true;
+
+  const btnR = document.getElementById('btn-refresh');
+  if (btnR) btnR.classList.add('spinning');
+
+  const scrollEl = document.getElementById('grille-view');
+  const savedScroll = scrollEl ? scrollEl.scrollTop : 0;
+
   try {
     const [statusData, featuredRaw, notesRaw, blocsRaw] = await Promise.all([
       fetch(`${API}/status`).then(r => r.json()),
@@ -878,16 +904,24 @@ async function loadData() {
       fetch(`${API}/notes?limit=200`).then(r => r.json()),
       fetch(`${API}/blocs`).then(r => r.json()).catch(() => []),
     ]);
+    state._silent = silent;
     setState({
       status: statusData,
       notes: notesRaw.map(mapNote),
       featured: featuredRaw.map(mapNote),
       blocs: blocsRaw,
     });
+    state._silent = false;
+
+    if (silent && scrollEl) scrollEl.scrollTop = savedScroll;
   } catch {
     document.getElementById('pill-stat').innerHTML =
       '<span class="dot" style="background:var(--d-projets)"></span>hors ligne';
-    setTimeout(loadData, 5000); // serveur pas encore prêt — réessayer dans 5s
+    setTimeout(() => loadData(true), 5000); // serveur pas encore prêt — réessayer dans 5s
+  } finally {
+    _loadingData = false;
+    const btnR2 = document.getElementById('btn-refresh');
+    if (btnR2) btnR2.classList.remove('spinning');
   }
 }
 
@@ -898,8 +932,8 @@ async function loadData() {
   initChat();
   initBlocsResize();
   initZen();
-  await loadData();
-  setInterval(loadData, 2 * 60 * 1000); // rafraîchir toutes les 2 min (nouvelles notes de l'agent)
+  await loadData(false); // premier chargement avec animations
+  setInterval(() => loadData(true), 2 * 60 * 1000); // rafraîchir toutes les 2 min (silencieux)
   animate('#topbar, #une-head, #featured-cards, #chat-bar, #filter-bar', {
     opacity: [0, 1], translateY: ['8px', '0px'],
     delay: stagger(30), duration: 500, ease: 'outQuart',
