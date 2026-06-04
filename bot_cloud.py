@@ -1,6 +1,6 @@
 """
 bot_cloud.py — Second Cerveau Bot Telegram (Railway)
-Capture → OpenAI → Dropbox | Menus inline | Modification de fiches
+Capture → Groq → Dropbox | Menus inline | Modification de fiches
 """
 import io, os, re, sys, json, logging, tempfile, threading, unicodedata
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -26,7 +26,6 @@ log = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-OPENAI_API_KEY     = os.environ.get("OPENAI_API_KEY", "")
 TELEGRAM_TOKEN     = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID")
 DROPBOX_TOKEN      = os.environ.get("DROPBOX_ACCESS_TOKEN")
@@ -66,34 +65,6 @@ _SHIFTS_FR = {
 }
 
 _JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
-
-PROMPT_PLANNING = """Tu analyses un screenshot de planning Excel IKEA.
-
-== ÉTAPE 1 : Localise la ligne de Tristan ==
-Dans la colonne B (noms), cherche la cellule qui contient exactement "Tristan Cailloux".
-Sa ligne dans la section "Sales" contient "Shopkeeper HFB 01/02/03" en colonne A.
-Les lignes voisines sont d'autres shopkeepers (Nora Benlahmr, Tania Pereira, Ana Ferreira, Kévin Palau) — NE LIS PAS ces lignes.
-
-== ÉTAPE 2 : Lis les en-têtes ==
-- Ligne "Week number" → numéro de semaine
-- Ligne "Day" → MON, TUE, WED, THU, FRI, SAT, SUN pour chaque colonne
-- Ligne "Date" → numéro du jour du mois pour chaque colonne
-
-Aujourd'hui c'est le {today}. Déduis le mois et l'année exacts à partir de là.
-
-== ÉTAPE 3 : Extrait les shifts de LA LIGNE DE TRISTAN uniquement ==
-Pour chaque colonne jour visible, lis la cellule dans la ligne de Tristan.
-
-Normalise les codes :
-O.V/OV→OV | F.V/FV→FV | D.AM/D. AM→DAM | S.AM/S. AM→SAM
-D.PM/D. PM→DPM | S.PM/S. PM→SPM | O Log→OLOG | S.O Log→SOLOG
-HOL, EXT, OFF, AM, PM : inchangés. Case vide → null (ne pas inclure).
-
-== Réponse ==
-Réponds UNIQUEMENT avec un JSON valide (sans bloc markdown) :
-{{"week": <semaine>, "tristan_row_raw": "<ce que tu lis mot pour mot dans la ligne de Tristan>", "days": {{"YYYY-MM-DD": "CODE", ...}}}}
-
-Si Tristan est absent : {{"error": "not_found"}}"""
 
 TRIGGERS_TRAVAIL   = {"travail"}
 TRIGGERS_BLOCNOTES = {"blocnote", "bloc-note", "blocnotes", "bloc-notes"}
@@ -304,33 +275,6 @@ def extraire_audio_tmp(data: bytes, ext: str = ".ogg") -> str:
         os.unlink(tmp_path)
 
 
-def extraire_planning_image(data: bytes) -> dict:
-    """Essaie gpt-4o-mini d'abord, bascule sur gpt-4o si le JSON est invalide (Step G)."""
-    import base64
-    from openai import OpenAI
-    b64    = base64.b64encode(data).decode()
-    prompt = PROMPT_PLANNING.format(today=datetime.now().strftime("%d/%m/%Y"))
-    client = OpenAI(api_key=OPENAI_API_KEY)
-    for model in ["gpt-4.1-mini", "gpt-4.1"]:
-        try:
-            r    = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "high"}},
-                ]}],
-                max_tokens=1000,
-            )
-            text   = re.sub(r"```(?:json)?\s*", "", r.choices[0].message.content.strip()).strip("`").strip()
-            result = json.loads(text)
-            log.info("Planning extrait via %s", model)
-            return result
-        except (json.JSONDecodeError, ValueError):
-            if model == "gpt-4o":
-                raise
-            log.info("gpt-4o-mini insuffisant pour le planning → fallback gpt-4o")
-    return {"error": "extraction_failed"}
-
 # ── Bloc-notes / Travail / Projets ────────────────────────────────────────────
 
 def lire_fichier_dropbox(path: str) -> str:
@@ -509,17 +453,8 @@ def kb_menu_principal() -> InlineKeyboardMarkup:
 
 def kb_planning_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📤 Uploader planning",  callback_data="planning:upload")],
         [InlineKeyboardButton("📅 Voir cette semaine", callback_data="planning:voir")],
         [InlineKeyboardButton("↩️ Retour",             callback_data="menu:accueil")],
-    ])
-
-
-def kb_planning_confirm() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Confirmer et enregistrer", callback_data="planning:confirm")],
-        [InlineKeyboardButton("🔄 Relancer l'extraction",   callback_data="planning:retry")],
-        [InlineKeyboardButton("❌ Annuler",                  callback_data="planning:cancel")],
     ])
 
 
@@ -945,49 +880,7 @@ async def traiter_texte(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await msg.edit_text(erreur_msg(e))
 
 
-async def _traiter_planning_bytes(update: Update, context: ContextTypes.DEFAULT_TYPE, data: bytes) -> None:
-    msg = await update.message.reply_text("⏳ Extraction du planning via GPT…")
-    try:
-        result  = extraire_planning_image(data)
-        if "error" in result:
-            await msg.edit_text(
-                "❌ Tristan introuvable dans ce screenshot.\n"
-                "Vérifie que ta ligne *Tristan Cailloux* est bien visible, puis renvoie.",
-                parse_mode="Markdown",
-            )
-            return
-        days    = {k: v for k, v in result.get("days", {}).items() if v}
-        semaine = result.get("week", "?")
-        raw     = result.get("tristan_row_raw", "")
-        context.user_data["pending_planning_data"] = {"week": semaine, "days": days}
-        lignes  = [f"📋 *Vérifie le planning semaine {semaine} :*\n"]
-        for d, c in sorted(days.items()):
-            emoji, label = _SHIFTS_FR.get(c, ("📅", c))
-            dt = datetime.strptime(d, "%Y-%m-%d")
-            lignes.append(f"• {_JOURS_FR[dt.weekday()]} {dt.strftime('%d/%m')} : {emoji} *{c}* — {label}")
-        if raw:
-            lignes.append(f"\n_Ligne lue :_ `{raw[:120]}`")
-        lignes.append("\n_Est-ce correct ?_")
-        await msg.edit_text("\n".join(lignes), parse_mode="Markdown", reply_markup=kb_planning_confirm())
-    except Exception as e:
-        log.exception("Erreur planning")
-        await msg.edit_text(erreur_msg(e))
-
-
-async def _traiter_planning_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    buf = io.BytesIO()
-    await (await update.message.photo[-1].get_file()).download_to_memory(buf)
-    await _traiter_planning_bytes(update, context, buf.getvalue())
-
-
 async def traiter_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if context.user_data.pop("pending_planning_upload", False):
-        await _traiter_planning_photo(update, context)
-        return
-    caption = (update.message.caption or "").strip().lower()
-    if caption.startswith("planning"):
-        await _traiter_planning_photo(update, context)
-        return
     msg = await update.message.reply_text("⏳ Analyse de la photo…")
     try:
         buf  = io.BytesIO()
@@ -1005,18 +898,7 @@ async def traiter_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def traiter_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     doc = update.message.document
     ext = os.path.splitext(doc.file_name)[1].lower()
-    caption = (update.message.caption or "").strip().lower()
 
-    # Planning via document image
-    if ext in {".jpg", ".jpeg", ".png"} and (
-        context.user_data.pop("pending_planning_upload", False) or caption.startswith("planning")
-    ):
-        buf = io.BytesIO()
-        await (await doc.get_file()).download_to_memory(buf)
-        await _traiter_planning_bytes(update, context, buf.getvalue())
-        return
-
-    # Step I — garde-fou taille
     if doc.file_size and doc.file_size > MAX_DOC_SIZE_MB * 1024 * 1024:
         await update.message.reply_text(
             f"❌ Fichier trop volumineux (max {MAX_DOC_SIZE_MB} Mo). Compresse le PDF avant d'envoyer."
@@ -1309,42 +1191,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await query.edit_message_text(
             "📅 *Mon planning*\n\nUploade ton screenshot chaque semaine pour recevoir un rappel à 22h la veille de chaque shift.",
             parse_mode="Markdown", reply_markup=kb_planning_menu(),
-        )
-        return
-
-    if data == "planning:upload":
-        context.user_data["pending_planning_upload"] = True
-        await query.edit_message_text(
-            "📤 Envoie le screenshot de ton planning.\n\n"
-            "_💡 Pour une meilleure qualité, envoie-le comme_ *Fichier* _(pas comme photo)._\n"
-            "_Tu peux aussi envoyer une photo avec la légende_ `planning` _n'importe quand._",
-            parse_mode="Markdown",
-        )
-        return
-
-    if data == "planning:confirm":
-        pending = context.user_data.pop("pending_planning_data", None)
-        if not pending:
-            await query.edit_message_text("❌ Session expirée. Renvoie le screenshot.")
-            return
-        save_planning(pending["days"])
-        await query.edit_message_text(
-            f"✅ *Planning semaine {pending['week']} enregistré !*\n_{len(pending['days'])} jours sauvegardés._",
-            parse_mode="Markdown", reply_markup=kb_planning_menu(),
-        )
-        return
-
-    if data == "planning:cancel":
-        context.user_data.pop("pending_planning_data", None)
-        await query.edit_message_text("❌ Extraction annulée.", reply_markup=kb_planning_menu())
-        return
-
-    if data == "planning:retry":
-        context.user_data.pop("pending_planning_data", None)
-        context.user_data["pending_planning_upload"] = True
-        await query.edit_message_text(
-            "🔄 Renvoie le screenshot. *Essaie en l'envoyant comme Fichier* pour une meilleure qualité.",
-            parse_mode="Markdown",
         )
         return
 
