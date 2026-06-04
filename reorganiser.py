@@ -1,9 +1,9 @@
 import sys
 import re
 import shutil
-import unicodedata
 import logging
 from pathlib import Path
+from core import extraire_champ, slugifier
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -21,21 +21,6 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger(__name__)
-
-
-def extraire_champ(contenu: str, champ: str) -> str:
-    match = re.search(rf"\*\*{champ}\*\*\s*:\s*(.+?)(?=\n\*\*|\Z)", contenu, re.DOTALL)
-    return match.group(1).strip() if match else ""
-
-
-def slugifier(texte: str, max_len: int = 50) -> str:
-    texte = unicodedata.normalize("NFKD", texte)
-    texte = texte.encode("ascii", "ignore").decode("ascii")
-    texte = texte.lower()
-    texte = re.sub(r"[^\w\s-]", "", texte)
-    texte = re.sub(r"[\s\-]+", "_", texte)
-    texte = texte.strip("_")
-    return texte[:max_len].rstrip("_") or "note_sans_titre"
 
 
 def type_vers_dossier(type_gemini: str) -> str:
