@@ -9,6 +9,11 @@ const SLIDER_CONFIGS = [
   { param: 'intensity', label: 'INTENSITÉ', color: 'oklch(0.78 0.14 150)', min: 0.1, max: 1.0 },
 ];
 
+const KNOB_CONFIGS = [
+  { param: 'scale', label: 'TAILLE', min: 0.5, max: 2.0 },
+  { param: 'chaos', label: 'CHAOS',  min: 0,   max: 1   },
+];
+
 export function create(container) {
   const params = {
     hueShift: 0, speed: 1.0, blur: 70, intensity: 0.45,
@@ -145,6 +150,99 @@ export function create(container) {
     });
 
     updateSlider();
+  });
+
+  // --- Knobs ---
+  const KS = 52;   // SVG size in px
+  const KC = KS / 2;
+  const KR = 17;   // arc radius
+
+  function polarPt(angleDeg) {
+    const rad = angleDeg * Math.PI / 180;
+    return [KC + KR * Math.cos(rad), KC + KR * Math.sin(rad)];
+  }
+
+  function arcD(startDeg, endDeg) {
+    const [sx, sy] = polarPt(startDeg);
+    const [ex, ey] = polarPt(endDeg);
+    const span = endDeg - startDeg;
+    const large = span > 180 ? 1 : 0;
+    return `M ${sx.toFixed(2)} ${sy.toFixed(2)} A ${KR} ${KR} 0 ${large} 1 ${ex.toFixed(2)} ${ey.toFixed(2)}`;
+  }
+
+  const NS = 'http://www.w3.org/2000/svg';
+
+  KNOB_CONFIGS.forEach(({ param, label, min, max }) => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;cursor:grab;user-select:none;';
+
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', KS);
+    svg.setAttribute('height', KS);
+    svg.setAttribute('viewBox', `0 0 ${KS} ${KS}`);
+
+    // Arc fond (gris, toute la plage -135° à +135°)
+    const bgArc = document.createElementNS(NS, 'path');
+    bgArc.setAttribute('d', arcD(-135, 135));
+    bgArc.setAttribute('fill', 'none');
+    bgArc.setAttribute('stroke', 'rgba(255,255,255,0.12)');
+    bgArc.setAttribute('stroke-width', '3');
+    bgArc.setAttribute('stroke-linecap', 'round');
+
+    // Arc progression (blanc, de -135° à valeur courante)
+    const fgArc = document.createElementNS(NS, 'path');
+    fgArc.setAttribute('fill', 'none');
+    fgArc.setAttribute('stroke', 'rgba(255,255,255,0.65)');
+    fgArc.setAttribute('stroke-width', '3');
+    fgArc.setAttribute('stroke-linecap', 'round');
+
+    // Dot indicateur (point blanc)
+    const dot = document.createElementNS(NS, 'circle');
+    dot.setAttribute('r', '3');
+    dot.setAttribute('fill', 'white');
+
+    svg.append(bgArc, fgArc, dot);
+
+    const lbl = document.createElement('span');
+    lbl.textContent = label;
+    lbl.style.cssText = [
+      'font-size:8px;letter-spacing:0.08em;color:rgba(255,255,255,0.45);',
+      "font-family:var(--font-mono,'JetBrains Mono',monospace);user-select:none;",
+    ].join('');
+
+    wrap.append(svg, lbl);
+    knobsEl.appendChild(wrap);
+
+    function updateKnob() {
+      const t = (params[param] - min) / (max - min);
+      const angle = -135 + t * 270;
+      const [dx, dy] = polarPt(angle);
+      dot.setAttribute('cx', dx.toFixed(2));
+      dot.setAttribute('cy', dy.toFixed(2));
+      const span = angle - (-135);
+      fgArc.setAttribute('d', span > 0.5 ? arcD(-135, angle) : `M ${KC} ${KC}`);
+    }
+
+    svg.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const kx = rect.left + rect.width / 2;
+      const ky = rect.top + rect.height / 2;
+
+      function onMove(ev) {
+        const dx = ev.clientX - kx, dy = ev.clientY - ky;
+        let angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        angle = Math.max(-135, Math.min(135, angle));
+        const t = (angle + 135) / 270;
+        params[param] = min + t * (max - min);
+        updateKnob();
+      }
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', () => document.removeEventListener('mousemove', onMove), { once: true });
+    });
+
+    updateKnob();
   });
 
   function resize() {
