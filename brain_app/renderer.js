@@ -441,6 +441,25 @@ async function patchTitre(note, newTitre) {
   } catch { /* silencieux */ }
 }
 
+async function patchDomaine(note, newDomaine) {
+  if (newDomaine === note.domaine) return;
+  try {
+    const resp = await fetch(`${API}/notes/${note.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domaine: newDomaine }),
+    });
+    if (!resp.ok) return;
+    const update = n => n.id === note.id ? { ...n, domaine: newDomaine } : n;
+    setState({
+      notes:    state.notes.map(update),
+      openNote: state.openNote?.id === note.id
+        ? { ...state.openNote, domaine: newDomaine }
+        : state.openNote,
+    });
+  } catch { /* silencieux */ }
+}
+
 function renderModal() {
   const panel = document.getElementById('panel');
   const existing = document.getElementById('modal-scrim');
@@ -495,7 +514,18 @@ function renderModal() {
           <button class="navbtn next" id="modal-next">${ICONS.arrow}</button>
           <button class="closebtn" id="modal-close">${ICONS.close}</button>
           <div class="htext">
-            <div class="domrow"><span class="ddot"></span><span class="domlabel">${note.est_meta ? 'Synthèse · ' : ''}${dom.label}</span></div>
+            <div class="domrow domain-changeable" id="modal-domrow">
+              <span class="ddot"></span>
+              <span class="domlabel">${note.est_meta ? 'Synthèse · ' : ''}${dom.label}</span>
+              <span class="domain-edit-hint">✎</span>
+            </div>
+            <div class="domain-picker hidden" id="modal-domain-picker">
+              ${DOMAIN_ORDER.map(d => {
+                const dc = domainConfig(d);
+                const isActive = d === note.domaine;
+                return `<button class="dpill${isActive ? ' active' : ''}" data-domain="${d}" style="--accent:${dc.color}"><span class="ddot"></span>${dc.label}</button>`;
+              }).join('')}
+            </div>
             ${sourceLinkHtml}
             <h2 id="modal-title" class="title-editable" contenteditable="true" spellcheck="false">${note.titre}</h2>
           </div>
@@ -530,6 +560,33 @@ function renderModal() {
   document.getElementById('modal-close').addEventListener('click', closeModal);
   document.getElementById('modal-prev').addEventListener('click', () => navModal(-1));
   document.getElementById('modal-next').addEventListener('click', () => navModal(1));
+
+  const domrow = document.getElementById('modal-domrow');
+  const picker = document.getElementById('modal-domain-picker');
+
+  domrow.addEventListener('click', (e) => {
+    e.stopPropagation();
+    picker.classList.toggle('hidden');
+  });
+
+  picker.querySelectorAll('.dpill').forEach(pill => {
+    pill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      picker.classList.add('hidden');
+      patchDomaine(note, pill.dataset.domain);
+    });
+  });
+
+  const onDocClick = (e) => {
+    if (!document.getElementById('modal-domain-picker')) {
+      document.removeEventListener('mousedown', onDocClick);
+      return;
+    }
+    if (!picker.contains(e.target) && !domrow.contains(e.target)) {
+      picker.classList.add('hidden');
+    }
+  };
+  document.addEventListener('mousedown', onDocClick);
 
   const srcBtn = document.getElementById('modal-source-link');
   if (srcBtn && note.url_source) {
