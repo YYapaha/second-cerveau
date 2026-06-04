@@ -229,30 +229,15 @@ _GROQ_MODEL_PRIMARY  = "llama-3.3-70b-versatile"
 _GROQ_MODEL_FALLBACK = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 def analyser_contenu(contenu: str, source: str) -> str:
-    from groq import Groq
-    api_key = os.environ.get("GROQ_API_KEY", "")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY manquante. Ajoutez-la dans le fichier .env")
-    model_primary = os.environ.get("GROQ_MODEL", _GROQ_MODEL_PRIMARY)
     prompt = PROMPT_ANALYSE.format(
         source_md=formater_source(source),
         date_heure=datetime.now().strftime("%d/%m/%Y %H:%M"),
         contenu=contenu,
     )
-    client = Groq(api_key=api_key)
-    messages = [
+    return appeler_groq([
         {"role": "system", "content": _SYSTEM_MSG},
         {"role": "user",   "content": prompt},
-    ]
-    for model in [model_primary, _GROQ_MODEL_FALLBACK]:
-        try:
-            r = client.chat.completions.create(model=model, messages=messages, max_tokens=4096)
-            return r.choices[0].message.content
-        except Exception as e:
-            if ("413" in str(e) or "rate_limit_exceeded" in str(e)) and model != _GROQ_MODEL_FALLBACK:
-                print(f"⚠️  Contenu trop long pour {model}, bascule sur {_GROQ_MODEL_FALLBACK}...")
-                continue
-            raise
+    ])
 
 
 def appeler_groq(messages: list[dict], max_tokens: int = 4096) -> str:
@@ -284,7 +269,7 @@ def appeler_groq_vision(image_bytes: bytes, prompt: str, mime: str = "image/jpeg
     b64 = base64.b64encode(image_bytes).decode()
     client = Groq(api_key=api_key)
     r = client.chat.completions.create(
-        model="meta-llama/llama-4-scout-17b-16e-instruct",
+        model=_GROQ_MODEL_FALLBACK,
         messages=[{"role": "user", "content": [
             {"type": "text",      "text": prompt},
             {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
