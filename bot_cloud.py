@@ -1416,10 +1416,16 @@ async def post_init(application: Application) -> None:
         ("travail",   "Voir les tâches"),
         ("blocnotes", "Voir le bloc-notes"),
         ("done",      "Cocher des tâches — ex: T1 B2"),
+        ("ping",      "Uptime du bot"),
         ("help",      "Aide et commandes"),
         ("monid",     "Voir ton Chat ID"),
     ])
     log.info("✅ Commandes Telegram enregistrées")
+    if TELEGRAM_CHAT_ID:
+        await application.bot.send_message(
+            chat_id=int(TELEGRAM_CHAT_ID),
+            text=f"✅ Bot démarré — {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+        )
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
