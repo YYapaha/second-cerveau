@@ -73,7 +73,7 @@ Pour contenu non-tech : arguments principaux avec les citations ou données clé
 - [nom exact] : [ce que ça fait]
 **QUAND_RESSORTIR** : "Quand je ferai [tâche précise], penser à [élément nommé dans cette fiche]"
 **TYPE** : [Note|Tutoriel|Outil|Réflexion]
-**DOMAINE** : [Travail|Apprentissage|Projets perso|Jeux vidéos|Plantes|Organisation TDAH]
+**DOMAINE** : [Travail|Apprentissage|Projets perso|Jeux vidéos|Plantes|Organisation TDAH|À trier]
 **TAGS** : #tag-tech-precis #tag2 #tag3
 **DATE** : {date_heure}
 

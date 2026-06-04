@@ -217,14 +217,14 @@ def test_parser_note_domaine_invalide_fallback():
     from brain_agent import parser_note
     fiche_sans_domaine = "# Note sans domaine\n**TAGS** : #test\n**DOMAINE** : DomaineInconnu\n"
     result = parser_note(fiche_sans_domaine)
-    assert result["domaine"] == "Projets perso"
+    assert result["domaine"] == "À trier"
 
 
 def test_parser_note_domaine_absent_fallback():
     from brain_agent import parser_note
     fiche_sans_domaine = "# Note sans domaine\n**TAGS** : #test\n"
     result = parser_note(fiche_sans_domaine)
-    assert result["domaine"] == "Projets perso"
+    assert result["domaine"] == "À trier"
 
 
 def test_parser_note_points_cles_comme_liste():

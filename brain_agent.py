@@ -17,7 +17,7 @@ DB_PATH      = Path(__file__).parent / "brain.db"
 DROPBOX_ROOT = "/Applications/Joplin"
 DOMAINS      = [
     "Travail", "Apprentissage", "Projets perso",
-    "Jeux vidéos", "Plantes", "Organisation TDAH",
+    "Jeux vidéos", "Plantes", "Organisation TDAH", "À trier",
 ]
 CLUSTER_THRESHOLD = 0.82
 CLUSTER_MIN_NOTES = 3
@@ -127,7 +127,7 @@ Retourne UNIQUEMENT un JSON valide (sans bloc markdown) :
   "titre_court": "<vrai titre de la source si présent dans la fiche (ligne # TITLE ou titre principal), sinon 5-8 mots descriptifs en français>",
   "insight_cle": "<1 phrase actionnable qui capture l'essentiel, en français>",
   "resume": "<2-3 phrases résumant le contenu, en français>",
-  "domaine": "<exactement un parmi : Travail | Apprentissage | Projets perso | Jeux vidéos | Plantes | Organisation TDAH>",
+  "domaine": "<exactement un parmi : Travail | Apprentissage | Projets perso | Jeux vidéos | Plantes | Organisation TDAH | À trier>",
   "contenu_riche": {{
     "url_source": "<première URL http(s) trouvée dans la fiche, ou null>",
     "points_cles": ["<bullet 1>", "<bullet 2>", "..."],
@@ -164,7 +164,7 @@ def parser_note(contenu: str) -> dict:
 
     domaine = extraire_champ(contenu, "DOMAINE")
     if domaine not in DOMAINS:
-        domaine = "Projets perso"
+        domaine = "À trier"
 
     points_raw = extraire_champ(contenu, "POINTS_CLES")
     points_cles = [
