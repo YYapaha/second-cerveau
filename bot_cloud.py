@@ -906,7 +906,7 @@ async def traiter_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     if ext not in {".pdf", ".txt", ".md"}:
-        await update.message.reply_text("❌ Format non supporté. Envoie un PDF, un fichier texte, ou une image planning.")
+        await update.message.reply_text("❌ Format non supporté. Envoie un PDF ou un fichier texte (.txt, .md).")
         return
 
     msg = await update.message.reply_text("⏳ Extraction du document…")
@@ -1189,7 +1189,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # ── Planning ──
     if data == "menu:planning":
         await query.edit_message_text(
-            "📅 *Mon planning*\n\nUploade ton screenshot chaque semaine pour recevoir un rappel à 22h la veille de chaque shift.",
+            "📅 *Mon planning*",
             parse_mode="Markdown", reply_markup=kb_planning_menu(),
         )
         return
