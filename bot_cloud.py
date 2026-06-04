@@ -17,6 +17,7 @@ from core import (
     nettoyer_contenu, evaluer_qualite, extraire_url,
     analyser_contenu, construire_fiche_complete,
     chercher_fiches, geocoder_ville, get_meteo,
+    appeler_groq_vision,
     _WMO_FR, LIMITE_EXTRACTION,
 )
 
@@ -268,18 +269,12 @@ def enregistrer_capture(url: str, fiche_nom: str) -> None:
 # ── Extraction multimédia ─────────────────────────────────────────────────────
 
 def extraire_image_bytes(data: bytes, mime: str = "image/jpeg") -> str:
-    import base64
-    from openai import OpenAI
-    b64 = base64.b64encode(data).decode()
-    r   = OpenAI(api_key=OPENAI_API_KEY).chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[{"role": "user", "content": [
-            {"type": "text", "text": "Décris cette image en détail. Si elle contient du texte, retranscris-le. Si c'est un graphique, explique les données."},
-            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-        ]}],
-        max_tokens=1000,
+    return appeler_groq_vision(
+        data,
+        "Décris cette image en détail. Si elle contient du texte, retranscris-le. "
+        "Si c'est un graphique, explique les données.",
+        mime,
     )
-    return r.choices[0].message.content
 
 
 def extraire_pdf_bytes(data: bytes) -> str:
@@ -289,14 +284,20 @@ def extraire_pdf_bytes(data: bytes) -> str:
 
 
 def extraire_audio_tmp(data: bytes, ext: str = ".ogg") -> str:
-    from openai import OpenAI
+    from groq import Groq
+    from pathlib import Path as _Path
+    api_key = os.environ.get("GROQ_API_KEY", "")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY manquante. Ajoutez-la dans le fichier .env")
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         tmp.write(data)
         tmp_path = tmp.name
     try:
+        client = Groq(api_key=api_key)
         with open(tmp_path, "rb") as f:
-            t = OpenAI(api_key=OPENAI_API_KEY).audio.transcriptions.create(
-                model="whisper-1", file=f, language="fr"
+            t = client.audio.transcriptions.create(
+                model="whisper-large-v3",
+                file=(_Path(tmp_path).name, f),
             )
         return t.text[:LIMITE_EXTRACTION]
     finally:
