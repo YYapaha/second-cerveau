@@ -113,7 +113,7 @@ export function create(container) {
     ctx.filter = 'none';
     ctx.globalAlpha = 1;
 
-    if (params.particles) drawParticles();
+    if (params.particles && pts.length) drawParticles();
 
     rafId = requestAnimationFrame(draw);
   }
