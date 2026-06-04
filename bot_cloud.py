@@ -22,11 +22,11 @@ from core import (
 from dropbox_client import (
     DROPBOX_ROOT, DROPBOX_RAW, DROPBOX_BLOCNOTES, DROPBOX_TRAVAIL,
     DROPBOX_PROJET, DROPBOX_SETTINGS, DROPBOX_PLANNING, DROPBOX_CAPTURES_INDEX,
-    get_dropbox, uploader_fiche, uploader_raw,
+    uploader_fiche, uploader_raw,
     lister_fiches, lister_toutes_fiches, telecharger_fiche,
     modifier_tags_dropbox, ajouter_tag_dropbox, supprimer_tag_dropbox,
     modifier_titre_dropbox, charger_index_captures, enregistrer_capture,
-    lire_fichier_dropbox, _ajouter_ligne, ajouter_blocnote, ajouter_travail,
+    lire_fichier_dropbox, ajouter_blocnote, ajouter_travail,
     ajouter_projet, supprimer_taches, load_settings, save_settings,
     load_planning, save_planning,
 )
