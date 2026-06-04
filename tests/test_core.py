@@ -47,6 +47,7 @@ def test_generer_nom_fichier_standard():
     nom = generer_nom_fichier(md)
     assert nom.startswith("PYTHON_")
     assert nom.endswith(".md")
+    assert "requests" in nom.lower()  # slug du titre présent
 
 def test_generer_nom_fichier_sans_tags_donne_divers():
     md = "**TITRE** : Une note sans tags"
@@ -93,6 +94,7 @@ def test_evaluer_qualite_contenu_court():
 def test_evaluer_qualite_injection():
     ok, msg = evaluer_qualite("contenu long " * 20, True)
     assert ok is False
+    assert msg != ""
 
 # ── construire_fiche_complete ─────────────────────────────────────────────────
 
@@ -120,6 +122,7 @@ def test_appeler_groq_retourne_reponse():
          patch.dict("os.environ", {"GROQ_API_KEY": "fake"}):
         result = appeler_groq([{"role": "user", "content": "test"}])
     assert result == "réponse test"
+    mock_client.chat.completions.create.assert_called()
 
 def test_appeler_groq_sans_cle_leve_erreur():
     with patch.dict("os.environ", {}, clear=True):
