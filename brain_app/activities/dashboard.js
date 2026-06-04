@@ -245,6 +245,49 @@ export function create(container) {
     updateKnob();
   });
 
+  // --- Toggles ---
+  const toggleRows = [
+    [
+      { param: 'b1', label: 'B1' },
+      { param: 'b2', label: 'B2' },
+      { param: 'b3', label: 'B3' },
+    ],
+    [
+      { param: 'particles', label: '∴' },
+      { param: 'lines',     label: '—' },
+    ],
+  ];
+
+  toggleRows.forEach(row => {
+    const rowEl = document.createElement('div');
+    rowEl.style.cssText = 'display:flex;gap:6px;';
+    row.forEach(({ param, label }) => {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      const activeStyle = 'background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.9);';
+      const inactiveStyle = 'background:transparent;color:rgba(255,255,255,0.35);';
+      btn.style.cssText = [
+        'padding:4px 10px;border-radius:999px;',
+        'border:1px solid rgba(255,255,255,0.085);',
+        params[param] ? activeStyle : inactiveStyle,
+        "font-family:var(--font-mono,'JetBrains Mono',monospace);font-size:11px;",
+        'cursor:pointer;transition:background 0.15s,color 0.15s;user-select:none;',
+      ].join('');
+
+      btn.addEventListener('click', () => {
+        params[param] = !params[param];
+        btn.style.background = params[param] ? 'rgba(255,255,255,0.15)' : 'transparent';
+        btn.style.color = `rgba(255,255,255,${params[param] ? '0.9' : '0.35'})`;
+        if (param === 'particles' && params.particles && !pts.length) {
+          initParticles(canvas.width, canvas.height);
+        }
+      });
+
+      rowEl.appendChild(btn);
+    });
+    togglesEl.appendChild(rowEl);
+  });
+
   function resize() {
     canvas.width  = container.clientWidth;
     canvas.height = container.clientHeight - PANEL_H;
