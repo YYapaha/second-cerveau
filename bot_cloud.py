@@ -1430,6 +1430,20 @@ async def post_init(application: Application) -> None:
         except Exception as e:
             log.warning("Erreur notification démarrage : %s", e)
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    import traceback as _tb
+    tb = _tb.format_exc()[-600:]
+    log.error("Exception non gérée : %s", tb)
+    if TELEGRAM_CHAT_ID:
+        try:
+            await context.bot.send_message(
+                chat_id=int(TELEGRAM_CHAT_ID),
+                text=f"❌ Erreur bot :\n```\n{tb}\n```",
+                parse_mode="Markdown",
+            )
+        except Exception:
+            pass
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -1441,6 +1455,7 @@ def main() -> None:
     log.info("🤖 Bot démarré — Dropbox : %s", DROPBOX_ROOT)
 
     app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
+    app.add_error_handler(error_handler)
 
     # Schedulers
     if TELEGRAM_CHAT_ID and app.job_queue:
