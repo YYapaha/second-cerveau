@@ -764,20 +764,9 @@ async def _appliquer_edit(update: Update, context, edit: dict, valeur: str) -> N
         await update.message.reply_text(erreur_msg(e))
 
 
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Step A — auth guard sur les callbacks
-    if TELEGRAM_CHAT_ID and update.effective_chat.id != int(TELEGRAM_CHAT_ID):
-        return
-
-    query = update.callback_query
-    await query.answer()
-    data  = query.data
-
-    if data == "ignore":
-        await query.edit_message_reply_markup(reply_markup=None)
-        return
-
-    # ── Captures (Steps E & F) ──
+async def _cb_capture(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, query, data: str
+) -> None:
     if data == "capture:cancel":
         context.user_data.pop("pending_capture", None)
         context.user_data.pop("pending_url", None)
@@ -817,9 +806,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         except Exception as e:
             log.exception("Erreur recapture")
             await query.message.edit_text(erreur_msg(e))
-        return
 
-    # ── Menu principal ──
+
+async def _cb_menu(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, query, data: str
+) -> None:
     if data == "menu:dernieres":
         fiches = lister_fiches(5)
         if not fiches:
@@ -887,7 +878,25 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         return
 
-    # ── Édition de fiches ──
+    if data == "menu:planning":
+        await query.edit_message_text(
+            "📅 *Mon planning*",
+            parse_mode="Markdown", reply_markup=kb_planning_menu(),
+        )
+        return
+
+    if data == "menu:meteo":
+        cfg = load_settings()
+        await query.edit_message_text(
+            f"⚙️ *Réglages météo*\n\n📍 Ville : *{cfg['ville']}*\n⏰ Heure : *{cfg['heure']}h00*",
+            parse_mode="Markdown", reply_markup=kb_meteo_settings(),
+        )
+        return
+
+
+async def _cb_fiche(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, query, data: str
+) -> None:
     if data.startswith("edit_fiche:"):
         filename = data[len("edit_fiche:"):]
         await query.edit_message_text(
@@ -955,43 +964,33 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         return
 
-    # ── Planning ──
-    if data == "menu:planning":
-        await query.edit_message_text(
-            "📅 *Mon planning*",
-            parse_mode="Markdown", reply_markup=kb_planning_menu(),
-        )
-        return
 
+async def _cb_planning(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, query, data: str
+) -> None:
     if data == "planning:voir":
         planning = load_planning()
         debut    = datetime.now() - timedelta(days=datetime.now().weekday())
         lignes   = ["📅 *Semaine en cours :*\n"]
-        trouvé   = False
+        trouve   = False
         for i in range(7):
             d = (debut + timedelta(days=i)).strftime("%Y-%m-%d")
             if d in planning:
-                trouvé = True
+                trouve = True
                 c      = planning[d]
                 emoji, label = _SHIFTS_FR.get(c, ("📅", c))
                 dt = datetime.strptime(d, "%Y-%m-%d")
                 lignes.append(f"• {_JOURS_FR[dt.weekday()]} {dt.strftime('%d/%m')} : {emoji} *{c}* — {label}")
-        if not trouvé:
+        if not trouve:
             lignes.append("_Aucune donnée pour cette semaine._\nUploade ton planning !")
         await query.edit_message_text(
             "\n".join(lignes), parse_mode="Markdown", reply_markup=kb_planning_menu(),
         )
-        return
 
-    # ── Météo ──
-    if data == "menu:meteo":
-        cfg = load_settings()
-        await query.edit_message_text(
-            f"⚙️ *Réglages météo*\n\n📍 Ville : *{cfg['ville']}*\n⏰ Heure : *{cfg['heure']}h00*",
-            parse_mode="Markdown", reply_markup=kb_meteo_settings(),
-        )
-        return
 
+async def _cb_meteo(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, query, data: str
+) -> None:
     if data == "ms:ville":
         context.user_data["pending_edit"] = {"type": "meteo_ville"}
         await query.edit_message_text(
@@ -1031,6 +1030,28 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Retour", callback_data="menu:accueil")]]),
         )
         return
+
+
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if TELEGRAM_CHAT_ID and update.effective_chat.id != int(TELEGRAM_CHAT_ID):
+        return
+
+    query = update.callback_query
+    await query.answer()
+    data  = query.data
+
+    if data == "ignore":
+        await query.edit_message_reply_markup(reply_markup=None)
+    elif data.startswith("capture:"):
+        await _cb_capture(update, context, query, data)
+    elif data.startswith("menu:"):
+        await _cb_menu(update, context, query, data)
+    elif data.startswith(("edit_fiche:", "edit_tags:", "edit_title:", "ta:", "tr:", "td:", "tw:")):
+        await _cb_fiche(update, context, query, data)
+    elif data.startswith("planning:"):
+        await _cb_planning(update, context, query, data)
+    elif data.startswith("ms:") or data == "meteo:voir":
+        await _cb_meteo(update, context, query, data)
 
 # ── post_init — enregistrement des commandes Telegram (Step J) ────────────────
 
