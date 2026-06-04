@@ -5,9 +5,9 @@ import os
 import sys
 import re
 import time
-import unicodedata
 from pathlib import Path
 from dotenv import load_dotenv
+from core import extraire_champ, slugifier, appeler_groq
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -18,23 +18,7 @@ BASE_DIR = Path(__file__).parent
 FICHES_DIR = BASE_DIR / "fiches"
 
 
-def extraire_champ(contenu: str, champ: str) -> str:
-    match = re.search(rf"\*\*{champ}\*\*\s*:\s*(.+?)(?=\n\*\*|\Z)", contenu, re.DOTALL)
-    return match.group(1).strip() if match else ""
-
-
-def slugifier(texte: str, max_len: int = 50) -> str:
-    texte = unicodedata.normalize("NFKD", texte)
-    texte = texte.encode("ascii", "ignore").decode("ascii")
-    texte = texte.lower()
-    texte = re.sub(r"[^\w\s-]", "", texte)
-    texte = re.sub(r"[\s\-]+", "_", texte)
-    texte = texte.strip("_")
-    return texte[:max_len].rstrip("_") or "note_sans_titre"
-
-
 def generer_titre(idee: str, resume: str) -> str:
-    from core import appeler_groq
     contexte = idee or resume or "Note sans contenu"
     prompt = (
         "Génère un titre de 5 à 7 mots maximum qui résume précisément ce contenu. "
