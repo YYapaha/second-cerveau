@@ -1128,7 +1128,13 @@ def main() -> None:
 
     log.info("🤖 Bot démarré — Dropbox : %s", DROPBOX_ROOT)
 
-    app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
+    app = (
+        Application.builder()
+        .token(TELEGRAM_TOKEN)
+        .post_init(post_init)
+        .get_updates_read_timeout(10)  # réduit la fenêtre de conflit au redémarrage Railway
+        .build()
+    )
     app.add_error_handler(error_handler)
 
     # Schedulers
@@ -1166,7 +1172,10 @@ def main() -> None:
     app.add_handler(MessageHandler(_CHAT_FILTER & filters.VOICE,        traiter_vocal))
 
     _start_health_server()
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Railway rolling deploy : le health server démarre d'abord → Railway SIGTERM l'ancien
+    # container → PTB annule son getUpdates. On attend 5s pour éviter le Conflict.
+    import time; time.sleep(5)
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 
 if __name__ == "__main__":
