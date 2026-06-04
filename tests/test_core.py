@@ -135,3 +135,24 @@ def test_analyser_contenu_appelle_appeler_groq():
         result = analyser_contenu("contenu de test", "https://example.com")
     mock_groq.assert_called_once()
     assert result == fiche_attendue
+
+# ── DOMAINE dans PROMPT_ANALYSE ───────────────────────────────────────────────
+
+from core import PROMPT_ANALYSE
+
+DOMAINES_VALIDES = ["Travail", "Apprentissage", "Projets perso", "Jeux vidéos", "Plantes", "Organisation TDAH"]
+
+def test_prompt_analyse_inclut_champ_domaine():
+    assert "**DOMAINE**" in PROMPT_ANALYSE
+
+def test_prompt_analyse_liste_domaines_valides():
+    for domaine in DOMAINES_VALIDES:
+        assert domaine in PROMPT_ANALYSE, f"Domaine manquant dans le prompt : {domaine}"
+
+def test_extraire_champ_domaine_format_a():
+    md = "**TYPE** : Tutoriel\n**DOMAINE** : Apprentissage\n**TAGS** : #python"
+    assert extraire_champ(md, "DOMAINE") == "Apprentissage"
+
+def test_extraire_champ_domaine_multi_mots():
+    md = "**DOMAINE** : Organisation TDAH\n**TAGS** : #organisation"
+    assert extraire_champ(md, "DOMAINE") == "Organisation TDAH"

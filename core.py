@@ -73,6 +73,7 @@ Pour contenu non-tech : arguments principaux avec les citations ou données clé
 - [nom exact] : [ce que ça fait]
 **QUAND_RESSORTIR** : "Quand je ferai [tâche précise], penser à [élément nommé dans cette fiche]"
 **TYPE** : [Note|Tutoriel|Outil|Réflexion]
+**DOMAINE** : [Travail|Apprentissage|Projets perso|Jeux vidéos|Plantes|Organisation TDAH]
 **TAGS** : #tag-tech-precis #tag2 #tag3
 **DATE** : {date_heure}
 
@@ -86,6 +87,7 @@ CRITIQUE — FORMAT OBLIGATOIRE pour la section après `---` :
   **POINTS_CLES** :
   - /compact : résume la conversation pour libérer du contexte sans perdre l'historique
   - context-bar.sh : script bash personnalisable affichant modèle, branche git, % tokens utilisés
+  **DOMAINE** : Apprentissage
   **TAGS** : #claude-code #slash-commands #context-management
 
 === CONTENU À ANALYSER ===
