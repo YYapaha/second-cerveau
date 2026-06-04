@@ -2,6 +2,13 @@
 
 const PANEL_H = 160;
 
+const SLIDER_CONFIGS = [
+  { param: 'hueShift',  label: 'HUE',      color: 'oklch(0.72 0.15 25)',  min: 0,   max: 360 },
+  { param: 'speed',     label: 'VITESSE',   color: 'oklch(0.72 0.13 255)', min: 0.1, max: 3.0 },
+  { param: 'blur',      label: 'BLUR',      color: 'oklch(0.65 0.16 290)', min: 20,  max: 120 },
+  { param: 'intensity', label: 'INTENSITÉ', color: 'oklch(0.78 0.14 150)', min: 0.1, max: 1.0 },
+];
+
 export function create(container) {
   const params = {
     hueShift: 0, speed: 1.0, blur: 70, intensity: 0.45,
@@ -73,6 +80,72 @@ export function create(container) {
 
   const canvas = container.querySelector('#db-canvas');
   const ctx = canvas.getContext('2d');
+
+  const slidersEl = container.querySelector('#db-sliders');
+  const knobsEl   = container.querySelector('#db-knobs');
+  const togglesEl = container.querySelector('#db-toggles');
+
+  // --- Sliders ---
+  SLIDER_CONFIGS.forEach(({ param, label, color, min, max }) => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:6px;width:28px;height:100%;';
+
+    const track = document.createElement('div');
+    track.style.cssText = [
+      'flex:1;width:6px;position:relative;',
+      'background:rgba(255,255,255,0.08);border-radius:3px;',
+      'border:1px solid rgba(255,255,255,0.085);cursor:ns-resize;',
+    ].join('');
+
+    const fill = document.createElement('div');
+    fill.style.cssText = [
+      'position:absolute;bottom:0;left:0;right:0;',
+      `background:${color};border-radius:3px;pointer-events:none;`,
+    ].join('');
+
+    const thumb = document.createElement('div');
+    thumb.style.cssText = [
+      'position:absolute;left:50%;transform:translateX(-50%);',
+      'width:12px;height:4px;background:white;border-radius:2px;pointer-events:none;',
+    ].join('');
+
+    track.appendChild(fill);
+    track.appendChild(thumb);
+
+    const lbl = document.createElement('span');
+    lbl.textContent = label;
+    lbl.style.cssText = [
+      'font-size:8px;letter-spacing:0.08em;color:rgba(255,255,255,0.45);',
+      "font-family:var(--font-mono,'JetBrains Mono',monospace);",
+      'writing-mode:vertical-rl;transform:rotate(180deg);user-select:none;',
+    ].join('');
+
+    wrap.appendChild(track);
+    wrap.appendChild(lbl);
+    slidersEl.appendChild(wrap);
+
+    function updateSlider() {
+      const t = (params[param] - min) / (max - min);
+      fill.style.height  = `${t * 100}%`;
+      thumb.style.bottom = `calc(${t * 100}% - 2px)`;
+    }
+
+    track.addEventListener('mousedown', e => {
+      e.preventDefault();
+      function onMove(ev) {
+        const rect = track.getBoundingClientRect();
+        let t = 1 - (ev.clientY - rect.top) / rect.height;
+        t = Math.max(0, Math.min(1, t));
+        params[param] = min + t * (max - min);
+        updateSlider();
+      }
+      onMove(e);
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', () => document.removeEventListener('mousemove', onMove), { once: true });
+    });
+
+    updateSlider();
+  });
 
   function resize() {
     canvas.width  = container.clientWidth;
