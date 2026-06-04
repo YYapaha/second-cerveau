@@ -677,8 +677,9 @@ async def _extraire_url_avec_msg(msg, url: str):
 # ── Handlers commandes ────────────────────────────────────────────────────────
 
 async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    uptime = datetime.now() - _START_TIME
-    h, m = divmod(int(uptime.total_seconds()), 3600)
+    total_secs = int((datetime.now() - _START_TIME).total_seconds())
+    h, remainder = divmod(total_secs, 3600)
+    m = remainder // 60
     await update.message.reply_text(f"🏓 Pong — uptime {h}h{m:02d}m")
 
 
