@@ -806,6 +806,7 @@ async def _cb_capture(
         except Exception as e:
             log.exception("Erreur recapture")
             await query.message.edit_text(erreur_msg(e))
+        return
 
 
 async def _cb_menu(
@@ -986,6 +987,7 @@ async def _cb_planning(
         await query.edit_message_text(
             "\n".join(lignes), parse_mode="Markdown", reply_markup=kb_planning_menu(),
         )
+        return
 
 
 async def _cb_meteo(
