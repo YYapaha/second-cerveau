@@ -2,7 +2,8 @@
 bot_cloud.py — Second Cerveau Bot Telegram (Railway)
 Capture → OpenAI → Dropbox | Menus inline | Modification de fiches
 """
-import io, os, re, sys, json, logging, tempfile, unicodedata
+import io, os, re, sys, json, logging, tempfile, threading, unicodedata
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timedelta
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -1453,6 +1454,27 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         except Exception:
             pass
 
+class _HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/health":
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, *args):
+        pass
+
+
+def _start_health_server() -> None:
+    port = int(os.environ.get("HEALTH_PORT", "8080"))
+    server = HTTPServer(("0.0.0.0", port), _HealthHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    log.info("Health check actif sur port %d", port)
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -1500,6 +1522,7 @@ def main() -> None:
     app.add_handler(MessageHandler(_CHAT_FILTER & filters.Document.ALL, traiter_document))
     app.add_handler(MessageHandler(_CHAT_FILTER & filters.VOICE,        traiter_vocal))
 
+    _start_health_server()
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
