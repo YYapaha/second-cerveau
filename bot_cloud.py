@@ -1440,9 +1440,12 @@ async def post_init(application: Application) -> None:
         except Exception as e:
             log.warning("Erreur notification démarrage : %s", e)
 
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     import traceback as _tb
-    tb = _tb.format_exc()[-600:]
+    tb = "".join(_tb.format_exception(
+        type(context.error), context.error, context.error.__traceback__
+    ))[-600:]
     log.error("Exception non gérée : %s", tb)
     if TELEGRAM_CHAT_ID:
         try:
@@ -1453,6 +1456,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
             )
         except Exception:
             pass
+
 
 class _HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
