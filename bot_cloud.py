@@ -105,6 +105,8 @@ else:
     _CHAT_FILTER = filters.ALL
     log.warning("⚠️  TELEGRAM_CHAT_ID non défini — toutes les conversations sont acceptées.")
 
+_START_TIME = datetime.now()
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def cb(prefix: str, filename: str) -> str:
@@ -673,6 +675,12 @@ async def _extraire_url_avec_msg(msg, url: str):
         return None, msg
 
 # ── Handlers commandes ────────────────────────────────────────────────────────
+
+async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    uptime = datetime.now() - _START_TIME
+    h, m = divmod(int(uptime.total_seconds()), 3600)
+    await update.message.reply_text(f"🏓 Pong — uptime {h}h{m:02d}m")
+
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
@@ -1483,6 +1491,7 @@ def main() -> None:
     app.add_handler(CommandHandler("projets",   cmd_projet,    filters=_CHAT_FILTER))
     app.add_handler(CommandHandler("done",      cmd_done,      filters=_CHAT_FILTER))
     app.add_handler(CommandHandler("chercher",  cmd_chercher,  filters=_CHAT_FILTER))
+    app.add_handler(CommandHandler("ping",      cmd_ping,      filters=_CHAT_FILTER))
     app.add_handler(CommandHandler("monid",     cmd_monid))  # pas de filtre : utile pour setup
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(_CHAT_FILTER & filters.TEXT & ~filters.COMMAND, traiter_texte))
