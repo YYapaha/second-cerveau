@@ -1,5 +1,5 @@
 """
-Script one-shot : ajoute un TITRE OpenAI aux fiches qui n'en ont pas, puis renomme.
+Script one-shot : ajoute un TITRE aux fiches qui n'en ont pas, puis renomme.
 """
 import os
 import sys
@@ -14,12 +14,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
 load_dotenv(Path(__file__).parent / ".env")
 
-from openai import OpenAI
-
 BASE_DIR = Path(__file__).parent
 FICHES_DIR = BASE_DIR / "fiches"
-
-client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 
 def extraire_champ(contenu: str, champ: str) -> str:
@@ -38,6 +34,7 @@ def slugifier(texte: str, max_len: int = 50) -> str:
 
 
 def generer_titre(idee: str, resume: str) -> str:
+    from core import appeler_groq
     contexte = idee or resume or "Note sans contenu"
     prompt = (
         "Génère un titre de 5 à 7 mots maximum qui résume précisément ce contenu. "
@@ -45,21 +42,8 @@ def generer_titre(idee: str, resume: str) -> str:
         "Réponds UNIQUEMENT avec le titre, rien d'autre.\n\n"
         f"Contenu : {contexte[:500]}"
     )
-    for tentative in range(4):
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return response.choices[0].message.content.strip().strip('"').strip("'")
-        except Exception as e:
-            msg = str(e)
-            attente = 15 * (tentative + 1)
-            if "rate_limit" in msg.lower() and tentative < 3:
-                print(f"     ⏳ Rate limit — attente {attente}s avant retry...")
-                time.sleep(attente)
-            else:
-                raise
+    messages = [{"role": "user", "content": prompt}]
+    return appeler_groq(messages, max_tokens=50).strip().strip('"').strip("'")
 
 
 def chemin_sans_collision(dossier: Path, nom: str) -> Path:
