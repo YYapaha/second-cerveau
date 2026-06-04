@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-OPENAI_API_KEY     = os.environ["OPENAI_API_KEY"]
+OPENAI_API_KEY     = os.environ.get("OPENAI_API_KEY", "")
 TELEGRAM_TOKEN     = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID")
 DROPBOX_TOKEN      = os.environ.get("DROPBOX_ACCESS_TOKEN")
@@ -1426,8 +1426,6 @@ async def post_init(application: Application) -> None:
 def main() -> None:
     if not TELEGRAM_TOKEN:
         sys.exit("TELEGRAM_BOT_TOKEN manquant.")
-    if not OPENAI_API_KEY:
-        sys.exit("OPENAI_API_KEY manquante.")
     if not (DROPBOX_TOKEN or (DROPBOX_APP_KEY and DROPBOX_APP_SECRET and DROPBOX_REFRESH)):
         sys.exit("Token Dropbox manquant.")
 
