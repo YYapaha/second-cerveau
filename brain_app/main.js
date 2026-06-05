@@ -101,6 +101,8 @@ function killChildren() {
     if (!proc || !proc.pid) continue;
     try { spawn('taskkill', ['/F', '/T', '/PID', String(proc.pid)], { windowsHide: true, shell: false }); } catch {}
   }
+  // Filet de sécurité : tuer directement tout processus sur le port API (zombie possible sous Windows)
+  killPort(API_PORT);
 }
 
 // ─── Status polling ───────────────────────────────────────────────────────────
