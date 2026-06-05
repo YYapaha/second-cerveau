@@ -442,15 +442,6 @@ async function patchTitre(note, newTitre) {
 }
 
 async function patchDomaine(note, newDomaine) {
-  const pillEl = document.getElementById('pill-stat');
-  const _flash = (html, ms = 4000) => {
-    if (!pillEl) return;
-    const saved = pillEl.innerHTML;
-    pillEl.innerHTML = html;
-    setTimeout(() => { pillEl.innerHTML = saved; }, ms);
-  };
-  // Diagnostic toujours visible — montre les valeurs avant le guard
-  _flash(`<span style="opacity:.7;font-size:9px">→ "${newDomaine}" / cur:"${note?.domaine}"</span>`, 3000);
   if (!newDomaine || newDomaine === note.domaine) return;
   try {
     const resp = await fetch(`${API}/notes/${note.id}`, {
@@ -458,11 +449,7 @@ async function patchDomaine(note, newDomaine) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domaine: newDomaine }),
     });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      _flash(`<span style="color:var(--d-projets)">erreur ${resp.status}${err.detail ? ' · ' + err.detail : ''}</span>`);
-      return;
-    }
+    if (!resp.ok) return;
     const update = n => n.id === note.id ? { ...n, domaine: newDomaine } : n;
     setState({
       notes:    state.notes.map(update),
@@ -470,9 +457,7 @@ async function patchDomaine(note, newDomaine) {
         ? { ...state.openNote, domaine: newDomaine }
         : state.openNote,
     });
-  } catch (e) {
-    _flash(`<span style="color:var(--d-projets)">hors ligne · ${e.message}</span>`);
-  }
+  } catch { /* silencieux */ }
 }
 
 function renderModal() {
