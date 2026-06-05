@@ -153,6 +153,16 @@ def status():
     return {"total_notes": total, "meta_fiches_count": meta, "last_sync": last}
 
 
+@app.get("/domains")
+def get_domains():
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT name, color, position FROM domains ORDER BY position"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 @app.get("/notes")
 def get_notes(
     domaine: Optional[str] = Query(None),

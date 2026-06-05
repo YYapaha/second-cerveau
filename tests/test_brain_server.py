@@ -6,21 +6,8 @@ TEST_DB = tempfile.mktemp(suffix=".db")
 
 
 def _setup():
-    conn = sqlite3.connect(TEST_DB)
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS notes (
-            id TEXT PRIMARY KEY, dropbox_path TEXT NOT NULL,
-            titre_court TEXT, insight_cle TEXT, resume TEXT,
-            domaine TEXT, tags TEXT, date_capture TEXT, date_traitement TEXT,
-            score_pertinence REAL DEFAULT 0.0,
-            est_meta_fiche INTEGER DEFAULT 0,
-            sources_ids TEXT, embedding BLOB,
-            contenu_riche TEXT, titre_modifie INTEGER DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
-    """)
-    conn.commit()
-    conn.close()
+    from brain_agent import init_db
+    init_db(TEST_DB)
 
 
 _setup()
@@ -312,3 +299,16 @@ def test_add_bloc_item_newline_in_texte_422():
     with patch("brain_server.get_dropbox", return_value=MagicMock()):
         r = client.post("/blocs/travail/item", json={"texte": "task\ninjected"})
     assert r.status_code == 422
+
+
+# /domains tests
+def test_get_domains_returns_7_sorted():
+    resp = client.get("/domains")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 7
+    positions = [d["position"] for d in data]
+    assert positions == sorted(positions)
+    assert data[0]["name"] == "Travail"
+    assert all("name" in d and "color" in d and "position" in d for d in data)
+    assert all(d["color"].startswith("#") for d in data)
