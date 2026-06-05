@@ -181,8 +181,6 @@ function mapNote(raw) {
 
 function renderTopbar() {
   document.getElementById('logo-slot').innerHTML = ICONS.logo;
-  const trierIconEl = document.getElementById('trier-icon');
-  if (trierIconEl) trierIconEl.innerHTML = ICONS.trier;
   document.getElementById('spark-icon').innerHTML = ICONS.spark;
 
   const btnG = document.getElementById('btn-grille');
@@ -222,42 +220,7 @@ function renderTopbar() {
 // ── Render: section À trier ───────────────────────────────────────────────────
 
 function renderATrier() {
-  const container = document.getElementById('featured-cards');
-  const head = document.getElementById('une-head');
-  const trier = state.notes.filter(n => n.domaine === 'À trier');
-
-  if (!trier.length) {
-    container.innerHTML = '';
-    head.classList.add('hidden');
-    return;
-  }
-
-  head.classList.remove('hidden');
-  container.innerHTML = trier.map(n => `
-    <div class="fcard" data-id="${n.id}" style="--accent:var(--d-trier)" tabindex="0" role="button">
-      <div class="glow"></div>
-      <div class="ftitle">${n.titre}</div>
-      <div class="finsight">${n.insight}</div>
-      <div class="fmeta">
-        <span class="ddot"></span>
-        <span class="metatime">à trier</span>
-        <span class="metatime" style="margin-left:auto">${relTime(n._days)}</span>
-      </div>
-    </div>`).join('');
-
-  container.querySelectorAll('.fcard').forEach(el => {
-    el.addEventListener('click', () => {
-      const note = trier.find(n => n.id === el.dataset.id);
-      if (note) openModal(note);
-    });
-  });
-
-  if (!state._silent) {
-    animate(container.querySelectorAll('.fcard'), {
-      opacity: [0, 1], translateY: ['10px', '0px'],
-      delay: stagger(40), duration: 500, ease: 'outQuart',
-    });
-  }
+  // Remplacé par la section collapsible standard dans renderSections()
 }
 
 // ── Render: filters ───────────────────────────────────────────────────────────
@@ -1036,7 +999,7 @@ async function loadData(silent = true) {
   initZen();
   await loadData(false); // premier chargement avec animations
   setInterval(() => loadData(true), 2 * 60 * 1000); // rafraîchir toutes les 2 min (silencieux)
-  animate('#topbar, #une-head, #featured-cards, #chat-bar, #filter-bar', {
+  animate('#topbar, #chat-bar, #filter-bar', {
     opacity: [0, 1], translateY: ['8px', '0px'],
     delay: stagger(30), duration: 500, ease: 'outQuart',
   });
