@@ -295,7 +295,7 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
 .modal .mhead .domrow { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
 .modal .mhead .domrow .ddot { width: 8px; height: 8px; }
 .modal .mhead .domlabel { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.16em;
-  text-transform: uppercase; color: rgba(255,255,255,0.85); }
+  text-transform: uppercase; color: #fff; text-shadow: 0 1px 8px rgba(0,0,0,0.55); }
 .modal .mhead h2 { margin: 0; font-size: 23px; line-height: 1.12; letter-spacing: -0.02em; color: #fff;
   font-weight: 700; text-wrap: balance; }
 .modal .closebtn { position: absolute; top: 14px; right: 14px; z-index: 4; width: 32px; height: 32px;
