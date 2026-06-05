@@ -168,11 +168,12 @@ function mapNote(raw) {
     liens: parseLiens(raw.sources_ids),
     parsedTags: parseTags(raw.tags),
     _days: daysAgo(raw.date_capture),
-    url_source:      cr.url_source      || null,
-    points_cles:     Array.isArray(cr.points_cles) ? cr.points_cles : [],
-    pourquoi_garder: cr.pourquoi_garder || null,
-    quand_ressortir: cr.quand_ressortir || null,
-    titre_modifie:   Boolean(raw.titre_modifie),
+    url_source:        cr.url_source        || null,
+    contenu_essentiel: cr.contenu_essentiel || null,
+    points_cles:       Array.isArray(cr.points_cles) ? cr.points_cles : [],
+    pourquoi_garder:   cr.pourquoi_garder   || null,
+    quand_ressortir:   cr.quand_ressortir   || null,
+    titre_modifie:     Boolean(raw.titre_modifie),
   };
 }
 
@@ -205,7 +206,10 @@ function renderTopbar() {
   if (btnR) {
     btnR.innerHTML = ICONS.refresh;
     if (!btnR._bound) {
-      btnR.addEventListener('click', () => loadData(false));
+      btnR.addEventListener('click', () => {
+        if (window.syncBrain) window.syncBrain();
+        else loadData(false);
+      });
       btnR._bound = true;
     }
   }
@@ -338,7 +342,7 @@ function buildSectionHtml(dom, notes) {
       <span class="line"></span>
       <span class="chev">${ICONS.chev}</span>
     </div>
-    <div class="cards">${notes.map(buildNoteCardHtml).join('')}</div>
+    <div class="cards">${notes.map(buildNoteRowHtml).join('')}</div>
   </div>`;
 }
 
@@ -358,6 +362,17 @@ function buildNoteCardHtml(n) {
       ${firstTag ? `<span class="tag">#${firstTag}</span>` : ''}
       ${linked > 0 ? `<span class="meta-badge">${ICONS.link}<span class="metatime">${linked}</span></span>` : ''}
     </div>
+  </button>`;
+}
+
+function buildNoteRowHtml(n) {
+  const dom = domainConfig(n.domaine);
+  const firstTag = n.parsedTags[0];
+  return `<button class="nrow" data-id="${n.id}" style="--accent:${dom.color}">
+    <div class="nrow-bar"></div>
+    <span class="nrow-title">${n.titre}</span>
+    ${firstTag ? `<span class="nrow-tag">#${firstTag}</span>` : ''}
+    <span class="nrow-time">${relTime(n._days)}</span>
   </button>`;
 }
 
@@ -442,35 +457,22 @@ async function patchTitre(note, newTitre) {
 }
 
 async function patchDomaine(note, newDomaine) {
-  console.log('[patchDomaine] appelé', { noteId: note?.id, cur: note?.domaine, nouveau: newDomaine });
-  if (!newDomaine || newDomaine === note.domaine) {
-    console.log('[patchDomaine] no-op — même domaine ou vide');
-    return;
-  }
+  if (!newDomaine || newDomaine === note.domaine) return;
   try {
-    const body = JSON.stringify({ domaine: newDomaine });
-    console.log('[patchDomaine] PATCH', `${API}/notes/${note.id}`, body);
     const resp = await fetch(`${API}/notes/${note.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body,
+      body: JSON.stringify({ domaine: newDomaine }),
     });
-    const respText = await resp.text();
-    console.log('[patchDomaine] réponse', resp.status, respText);
     if (!resp.ok) return;
     const update = n => n.id === note.id ? { ...n, domaine: newDomaine } : n;
-    const matched = state.notes.filter(n => n.id === note.id);
-    console.log('[patchDomaine] notes matchées dans state:', matched.length, '— openNote.id:', state.openNote?.id, '=== note.id:', note.id);
     setState({
       notes:    state.notes.map(update),
       openNote: state.openNote?.id === note.id
         ? { ...state.openNote, domaine: newDomaine }
         : state.openNote,
     });
-    console.log('[patchDomaine] setState ok — openNote.domaine désormais:', state.openNote?.domaine);
-  } catch (e) {
-    console.error('[patchDomaine] erreur fetch:', e);
-  }
+  } catch { /* silencieux */ }
 }
 
 function renderModal() {
@@ -499,6 +501,10 @@ function renderModal() {
          const ldom = domainConfig(l.domaine);
          return `<button class="lrow" data-linked="${l.id}" style="--accent:${ldom.color}"><span class="ddot"></span><span class="lt">${l.titre}</span>${ICONS.arrow}</button>`;
        }).join('')}</div>`
+    : '';
+
+  const contenuEssentielHtml = note.contenu_essentiel
+    ? `<div class="blocklabel">Contenu essentiel</div><div class="resume">${note.contenu_essentiel.replace(/\n/g, '<br>')}</div>`
     : '';
 
   const pointsHtml = note.points_cles.length
@@ -541,6 +547,7 @@ function renderModal() {
           <div class="insight-box"><div class="bar"></div><div class="it">${note.insight}</div></div>
           <div class="blocklabel">Résumé</div>
           <div class="resume">${note.resume || ''}</div>
+          ${contenuEssentielHtml}
           ${pointsHtml}
           ${pourquoiHtml}
           ${quandHtml}
@@ -1028,4 +1035,17 @@ async function loadData(silent = true) {
     opacity: [0, 1], translateY: ['8px', '0px'],
     delay: stagger(30), duration: 500, ease: 'outQuart',
   });
+
+  // Écoute les événements de sync de brain_agent.py via IPC
+  if (window.onSyncState) {
+    window.onSyncState((state) => {
+      const btnR = document.getElementById('btn-refresh');
+      if (state === 'start') {
+        if (btnR) btnR.classList.add('spinning');
+      } else {
+        if (btnR) btnR.classList.remove('spinning');
+        if (state === 'end') loadData(false);
+      }
+    });
+  }
 })();
