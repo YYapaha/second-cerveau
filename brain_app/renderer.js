@@ -304,8 +304,13 @@ function renderSections() {
   regular.forEach(n => { if (groups[n.domaine]) groups[n.domaine].push(n); });
 
   let html = '';
-  DOMAIN_ORDER.forEach(d => {
-    if (!groups[d].length) return;
+  // À trier en tête si des notes non classées existent
+  if (groups['À trier']?.length) {
+    html += buildSectionHtml(domainConfig('À trier'), groups['À trier']);
+  }
+  // Autres domaines dans l'ordre habituel (sans répéter À trier)
+  DOMAIN_ORDER.filter(d => d !== 'À trier').forEach(d => {
+    if (!groups[d]?.length) return;
     html += buildSectionHtml(domainConfig(d), groups[d]);
   });
   if (meta.length) html += buildSectionHtml(META_DOM, meta);
@@ -319,16 +324,16 @@ function renderSections() {
     });
   });
 
-  container.querySelectorAll('.ncard').forEach(el => {
+  container.querySelectorAll('.nrow').forEach(el => {
     el.addEventListener('click', () => {
       const note = state.filteredList.find(n => n.id === el.dataset.id);
       if (note) openModal(note);
     });
   });
 
-  const cards = container.querySelectorAll('.ncard');
-  if (cards.length && !state._silent) {
-    animate(cards, { opacity: [0, 1], translateY: ['8px', '0px'], delay: stagger(30), duration: 380, ease: 'outCubic' });
+  const rows = container.querySelectorAll('.nrow');
+  if (rows.length && !state._silent) {
+    animate(rows, { opacity: [0, 1], translateY: ['6px', '0px'], delay: stagger(20), duration: 320, ease: 'outCubic' });
   }
 }
 
@@ -667,7 +672,7 @@ function initChat() {
 
       responseEl.textContent = data.reponse || '—';
 
-      document.querySelectorAll('.ncard, .fcard').forEach(el => el.classList.remove('highlighted'));
+      document.querySelectorAll('.nrow, .ncard').forEach(el => el.classList.remove('highlighted'));
       if (data.sources?.length) {
         const ids = new Set(data.sources.map(s => String(s.id)));
         document.querySelectorAll('[data-id]').forEach(el => {
