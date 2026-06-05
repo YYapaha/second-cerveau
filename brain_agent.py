@@ -51,6 +51,11 @@ def init_db(db_path: str | Path = DB_PATH) -> None:
                 key   TEXT PRIMARY KEY,
                 value TEXT
             );
+            CREATE TABLE IF NOT EXISTS domains (
+                name     TEXT PRIMARY KEY,
+                color    TEXT NOT NULL,
+                position INTEGER NOT NULL
+            );
         """)
         # Migration pour les DB existantes
         for col, definition in [
@@ -62,6 +67,21 @@ def init_db(db_path: str | Path = DB_PATH) -> None:
                 conn.commit()
             except Exception:
                 pass  # colonne déjà présente
+        # Seed domains if empty
+        if not conn.execute("SELECT COUNT(*) FROM domains").fetchone()[0]:
+            conn.executemany(
+                "INSERT INTO domains (name, color, position) VALUES (?,?,?)",
+                [
+                    ("Travail",           "#d4b96a", 0),
+                    ("Apprentissage",     "#7aa0d4", 1),
+                    ("Projets perso",     "#d47a6a", 2),
+                    ("Jeux vidéos",       "#c87ad4", 3),
+                    ("Plantes",           "#7ac88a", 4),
+                    ("Organisation TDAH", "#7ac8c8", 5),
+                    ("À trier",           "#c8b87a", 6),
+                ]
+            )
+            conn.commit()
     finally:
         conn.close()
 
@@ -158,9 +178,10 @@ def parser_note(contenu: str) -> dict:
     import re
     from core import extraire_champ
 
-    titre   = extraire_champ(contenu, "TITRE") or "Note sans titre"
-    insight = extraire_champ(contenu, "IDEE_PRINCIPALE") or ""
-    resume  = extraire_champ(contenu, "Résumé 30 secondes") or ""
+    titre             = extraire_champ(contenu, "TITRE") or "Note sans titre"
+    insight           = extraire_champ(contenu, "IDEE_PRINCIPALE") or ""
+    resume            = extraire_champ(contenu, "Résumé 30 secondes") or ""
+    contenu_essentiel = extraire_champ(contenu, "Contenu essentiel") or None
 
     domaine = extraire_champ(contenu, "DOMAINE")
     if domaine not in DOMAINS:
@@ -173,8 +194,16 @@ def parser_note(contenu: str) -> dict:
         if line.strip().startswith("-")
     ] if points_raw else []
 
-    url_match  = re.search(r"https?://[^\s\)\]]+", contenu)
-    url_source = url_match.group(0).rstrip(".,") if url_match else None
+    url_source = extraire_champ(contenu, "URL_SOURCE") or None
+    if not url_source:
+        # Fallback 1 : regex dans la partie LLM (avant CONTENU_BRUT) — évite les URLs parasites
+        partie_llm = contenu.split("\n---\n**CONTENU_BRUT**")[0]
+        url_match  = re.search(r"https?://[^\s\)\]]+", partie_llm)
+        url_source = url_match.group(0).rstrip(".,") if url_match else None
+    if not url_source:
+        # Fallback 2 : metadata jina.ai "URL Source: https://..." dans CONTENU_BRUT
+        url_jina = re.search(r"^URL Source:\s*(https?://\S+)", contenu, re.MULTILINE)
+        url_source = url_jina.group(1).rstrip(".,") if url_jina else None
 
     return {
         "titre_court": titre,
@@ -182,10 +211,11 @@ def parser_note(contenu: str) -> dict:
         "resume":      resume,
         "domaine":     domaine,
         "contenu_riche": {
-            "url_source":      url_source,
-            "points_cles":     points_cles,
-            "pourquoi_garder": extraire_champ(contenu, "POURQUOI_GARDER") or None,
-            "quand_ressortir": extraire_champ(contenu, "QUAND_RESSORTIR") or None,
+            "url_source":        url_source,
+            "contenu_essentiel": contenu_essentiel,
+            "points_cles":       points_cles,
+            "pourquoi_garder":   extraire_champ(contenu, "POURQUOI_GARDER") or None,
+            "quand_ressortir":   extraire_champ(contenu, "QUAND_RESSORTIR") or None,
         },
     }
 

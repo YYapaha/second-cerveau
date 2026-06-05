@@ -182,6 +182,7 @@ Liste des éléments concrets avec leurs noms exacts.
 **DOMAINE** : Apprentissage
 **TAGS** : #claude-code #slash-commands
 **DATE** : 04/06/2026 14:30
+**URL_SOURCE** : https://github.com/ykdojo/tips
 """
 
 
@@ -194,10 +195,11 @@ def test_parser_note_retourne_structure_complete():
     assert "domaine"      in result
     assert "contenu_riche" in result
     cr = result["contenu_riche"]
-    assert "url_source"      in cr
-    assert "points_cles"     in cr
-    assert "pourquoi_garder" in cr
-    assert "quand_ressortir" in cr
+    assert "url_source"        in cr
+    assert "contenu_essentiel" in cr
+    assert "points_cles"       in cr
+    assert "pourquoi_garder"   in cr
+    assert "quand_ressortir"   in cr
 
 
 def test_parser_note_extrait_titre():
@@ -260,3 +262,91 @@ def test_parser_note_sans_url_retourne_none():
     fiche = "# Note locale\n**DOMAINE** : Plantes\n**IDEE_PRINCIPALE** : Des plantes.\n"
     result = parser_note(fiche)
     assert result["contenu_riche"]["url_source"] is None
+
+
+def test_parser_note_extrait_url_source_fallback():
+    """Fiche legacy sans **URL_SOURCE** : le regex extrait l'URL du corps LLM."""
+    from brain_agent import parser_note
+    fiche = (
+        "# Claude Code — hooks (github.com 2026-06)\n\n"
+        "[https://github.com/ykdojo/tips](https://github.com/ykdojo/tips)\n\n"
+        "## Résumé 30 secondes\nTest\n\n"
+        "---\n**DOMAINE** : Apprentissage\n**TAGS** : #test\n"
+    )
+    result = parser_note(fiche)
+    assert result["contenu_riche"]["url_source"] == "https://github.com/ykdojo/tips"
+
+
+def test_parser_note_extrait_contenu_essentiel():
+    from brain_agent import parser_note
+    result = parser_note(_FICHE_COMPLETE)
+    ce = result["contenu_riche"]["contenu_essentiel"]
+    assert ce is not None
+    assert "éléments concrets" in ce
+
+
+def test_parser_note_extrait_url_depuis_jina():
+    """Fiche legacy : URL uniquement dans 'URL Source:' du CONTENU_BRUT jina.ai."""
+    from brain_agent import parser_note
+    fiche = (
+        "# Une fiche sans URL dans le corps\n\n"
+        "## Résumé 30 secondes\nRésumé ici.\n\n"
+        "---\n**DOMAINE** : Apprentissage\n**TAGS** : #rag\n"
+        "\n---\n**CONTENU_BRUT** :\n\n"
+        "Title: Article titre\n"
+        "URL Source: https://medium.com/@author/article-123\n"
+        "Published Time: 2025-01-01\n"
+    )
+    result = parser_note(fiche)
+    assert result["contenu_riche"]["url_source"] == "https://medium.com/@author/article-123"
+
+
+def test_parser_note_ignore_url_dans_contenu_brut():
+    """Le fallback regex ne doit pas capturer une URL parasite du CONTENU_BRUT."""
+    from brain_agent import parser_note
+    fiche = (
+        "# Note sans URL source\n\n"
+        "## Résumé\nPas d'URL ici.\n\n"
+        "---\n**DOMAINE** : Apprentissage\n**TAGS** : #test\n"
+        "\n---\n**CONTENU_BRUT** :\n\nhttps://parasite.com/ads\n"
+    )
+    result = parser_note(fiche)
+    assert result["contenu_riche"]["url_source"] is None
+
+
+def test_init_db_creates_domains_table():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        from brain_agent import init_db
+        init_db(db_path)
+        conn = sqlite3.connect(db_path)
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+        assert "domains" in tables
+        rows = conn.execute(
+            "SELECT name, color, position FROM domains ORDER BY position"
+        ).fetchall()
+        assert len(rows) == 7
+        assert rows[0][0] == "Travail"
+        assert rows[6][0] == "À trier"
+        assert all(r[1].startswith("#") for r in rows)
+        conn.close()
+    finally:
+        os.unlink(db_path)
+
+
+def test_init_db_domains_idempotent():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        from brain_agent import init_db
+        init_db(db_path)
+        init_db(db_path)  # second call must not duplicate
+        conn = sqlite3.connect(db_path)
+        count = conn.execute("SELECT COUNT(*) FROM domains").fetchone()[0]
+        assert count == 7
+        conn.close()
+    finally:
+        os.unlink(db_path)
