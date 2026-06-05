@@ -442,7 +442,6 @@ async function patchTitre(note, newTitre) {
 }
 
 async function patchDomaine(note, newDomaine) {
-  if (!newDomaine || newDomaine === note.domaine) return;
   const pillEl = document.getElementById('pill-stat');
   const _flash = (html, ms = 4000) => {
     if (!pillEl) return;
@@ -450,6 +449,9 @@ async function patchDomaine(note, newDomaine) {
     pillEl.innerHTML = html;
     setTimeout(() => { pillEl.innerHTML = saved; }, ms);
   };
+  // Diagnostic toujours visible — montre les valeurs avant le guard
+  _flash(`<span style="opacity:.7;font-size:9px">→ "${newDomaine}" / cur:"${note?.domaine}"</span>`, 3000);
+  if (!newDomaine || newDomaine === note.domaine) return;
   try {
     const resp = await fetch(`${API}/notes/${note.id}`, {
       method: 'PATCH',
@@ -537,13 +539,7 @@ function renderModal() {
           </div>
         </div>
         <div class="mbody">
-          <div class="domain-picker hidden" id="modal-domain-picker">
-            ${DOMAIN_ORDER.map(d => {
-              const dc = domainConfig(d);
-              const isActive = d === note.domaine;
-              return `<button class="dpill${isActive ? ' active' : ''}" data-domain="${d}" style="--accent:${dc.color}"><span class="ddot"></span>${dc.label}</button>`;
-            }).join('')}
-          </div>
+          <div class="domain-picker hidden" id="modal-domain-picker"></div>
           <div class="insight-box"><div class="bar"></div><div class="it">${note.insight}</div></div>
           <div class="blocklabel">Résumé</div>
           <div class="resume">${note.resume || ''}</div>
@@ -577,6 +573,20 @@ function renderModal() {
   const domrow = document.getElementById('modal-domrow');
   const picker = document.getElementById('modal-domain-picker');
 
+  // Création programmatique des pills — évite tout problème d'encodage HTML
+  DOMAIN_ORDER.forEach(d => {
+    const dc = domainConfig(d);
+    const btn = document.createElement('button');
+    btn.className = 'dpill' + (d === note.domaine ? ' active' : '');
+    btn.dataset.domain = d;
+    btn.style.setProperty('--accent', dc.color);
+    const dot = document.createElement('span');
+    dot.className = 'ddot';
+    btn.appendChild(dot);
+    btn.appendChild(document.createTextNode(dc.label));
+    picker.appendChild(btn);
+  });
+
   domrow.addEventListener('click', (e) => {
     e.stopPropagation();
     const opening = picker.classList.contains('hidden');
@@ -589,7 +599,7 @@ function renderModal() {
     }
   });
 
-  // Délégation : un seul listener sur le picker couvre tous les pills (y compris les spans enfants)
+  // Délégation — un seul listener couvre tous les pills y compris leurs spans enfants
   picker.addEventListener('click', (e) => {
     e.stopPropagation();
     const pill = e.target.closest('.dpill');
