@@ -1,6 +1,6 @@
 const { app, BrowserWindow, screen, ipcMain, shell, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const readline = require('readline');
 const http = require('http');
 
@@ -62,12 +62,25 @@ function spawnAgent() {
   });
 }
 
+function killPort(port) {
+  try {
+    const out = execSync(`netstat -ano | findstr :${port} | findstr LISTENING`, { encoding: 'utf8', windowsHide: true });
+    for (const line of out.trim().split('\n')) {
+      const pid = line.trim().split(/\s+/).at(-1);
+      if (pid && pid !== '0') execSync(`taskkill /F /PID ${pid}`, { windowsHide: true });
+    }
+  } catch {}
+}
+
 function spawnServer() {
-  serverProc = spawn(
-    'python',
-    ['-m', 'uvicorn', 'brain_server:app', '--host', '127.0.0.1', '--port', String(API_PORT), '--log-level', 'warning'],
-    { cwd: PROJECT_ROOT, windowsHide: true, detached: false, env: { ...process.env }, stdio: 'ignore', shell: true }
-  );
+  killPort(API_PORT); // tue tout processus encore en vie sur le port (zombie de session précédente)
+  setTimeout(() => {
+    serverProc = spawn(
+      'python',
+      ['-m', 'uvicorn', 'brain_server:app', '--host', '127.0.0.1', '--port', String(API_PORT), '--log-level', 'warning'],
+      { cwd: PROJECT_ROOT, windowsHide: true, detached: false, env: { ...process.env }, stdio: 'ignore', shell: true }
+    );
+  }, 400); // laisse le port se libérer avant de respawner
 }
 
 function restartAgent() {
