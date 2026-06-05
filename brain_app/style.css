@@ -211,7 +211,7 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
 .shead .line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--stroke), transparent); }
 .shead .chev { width: 14px; height: 14px; color: var(--ink-3); transition: transform .3s var(--ease); display: flex; }
 .shead.collapsed .chev { transform: rotate(-90deg); }
-.cards { display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+.cards { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
 
 /* ============================================================
    Note card
@@ -240,6 +240,39 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
   border: 1px solid color-mix(in oklch, var(--d-meta) 35%, transparent);
   background: color-mix(in oklch, var(--d-meta) 12%, transparent);
   border-radius: var(--r-pill); padding: 3px 8px; }
+
+/* ============================================================
+   Note row (vue compacte)
+   ============================================================ */
+.nrow {
+  all: unset; cursor: pointer; text-align: left; width: 100%;
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 6px; border-radius: 7px;
+  transition: background .15s var(--ease);
+}
+.nrow:hover { background: rgba(255,255,255,0.05); }
+.nrow-bar {
+  width: 2px; height: 15px; border-radius: 99px;
+  background: var(--accent); opacity: 0.55; flex-shrink: 0;
+  transition: opacity .15s var(--ease);
+}
+.nrow:hover .nrow-bar { opacity: 0.85; }
+.nrow-title {
+  font-size: 12px; font-weight: 500; flex: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--ink);
+}
+.nrow-tag {
+  font-family: var(--font-mono); font-size: 8.5px;
+  color: var(--ink-3); background: var(--glass);
+  border-radius: 4px; padding: 1px 5px;
+  flex-shrink: 0; white-space: nowrap;
+}
+.nrow-time {
+  font-family: var(--font-mono); font-size: 8.5px;
+  color: var(--ink-4); flex-shrink: 0; white-space: nowrap;
+}
+.nrow.highlighted { background: color-mix(in oklch, var(--accent) 10%, transparent); }
 
 /* ============================================================
    Corner stats
