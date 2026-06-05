@@ -442,14 +442,25 @@ async function patchTitre(note, newTitre) {
 }
 
 async function patchDomaine(note, newDomaine) {
-  if (newDomaine === note.domaine) return;
+  if (!newDomaine || newDomaine === note.domaine) return;
+  const pillEl = document.getElementById('pill-stat');
+  const _flash = (html, ms = 4000) => {
+    if (!pillEl) return;
+    const saved = pillEl.innerHTML;
+    pillEl.innerHTML = html;
+    setTimeout(() => { pillEl.innerHTML = saved; }, ms);
+  };
   try {
     const resp = await fetch(`${API}/notes/${note.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domaine: newDomaine }),
     });
-    if (!resp.ok) return;
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      _flash(`<span style="color:var(--d-projets)">erreur ${resp.status}${err.detail ? ' · ' + err.detail : ''}</span>`);
+      return;
+    }
     const update = n => n.id === note.id ? { ...n, domaine: newDomaine } : n;
     setState({
       notes:    state.notes.map(update),
@@ -457,7 +468,9 @@ async function patchDomaine(note, newDomaine) {
         ? { ...state.openNote, domaine: newDomaine }
         : state.openNote,
     });
-  } catch { /* silencieux */ }
+  } catch (e) {
+    _flash(`<span style="color:var(--d-projets)">hors ligne · ${e.message}</span>`);
+  }
 }
 
 function renderModal() {
