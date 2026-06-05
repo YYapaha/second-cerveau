@@ -7,6 +7,7 @@ from typing import Optional
 
 import numpy as np
 from fastapi import FastAPI, Query, HTTPException
+from fastapi.responses import JSONResponse
 import dropbox as dbx_mod
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
@@ -161,6 +162,50 @@ def get_domains():
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+@app.patch("/domains/{name}")
+def patch_domain(name: str, body: dict):
+    new_name  = body.get("name", "").strip() if "name" in body else None
+    new_color = body.get("color", "").strip() if "color" in body else None
+
+    if new_name is None and new_color is None:
+        raise HTTPException(status_code=422, detail="name ou color requis")
+    if new_name is not None and new_name == "":
+        raise HTTPException(status_code=422, detail="name ne peut pas être vide")
+
+    conn = get_db()
+    row = conn.execute("SELECT name, color, position FROM domains WHERE name = ?", (name,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="domaine inconnu")
+
+    if new_name is not None and new_name != name:
+        if name == "À trier":
+            conn.close()
+            return JSONResponse(status_code=400, content={"error": "cannot_rename_default_domain"})
+        conflict = conn.execute("SELECT name FROM domains WHERE name = ?", (new_name,)).fetchone()
+        if conflict:
+            conn.close()
+            raise HTTPException(status_code=409, detail="ce nom existe déjà")
+
+    try:
+        if new_name is not None and new_name != name:
+            conn.execute("UPDATE domains SET name = ? WHERE name = ?", (new_name, name))
+            conn.execute("UPDATE notes SET domaine = ? WHERE domaine = ?", (new_name, name))
+        if new_color is not None:
+            effective_name = new_name if (new_name and new_name != name) else name
+            conn.execute("UPDATE domains SET color = ? WHERE name = ?", (new_color, effective_name))
+        conn.commit()
+        final = conn.execute(
+            "SELECT name, color, position FROM domains WHERE name = ?",
+            (new_name if (new_name and new_name != name) else name,)
+        ).fetchone()
+        conn.close()
+        return dict(final)
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/notes")

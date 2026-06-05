@@ -312,3 +312,67 @@ def test_get_domains_returns_7_sorted():
     assert data[0]["name"] == "Travail"
     assert all("name" in d and "color" in d and "position" in d for d in data)
     assert all(d["color"].startswith("#") for d in data)
+
+
+def test_patch_domain_color_only():
+    resp = client.patch("/domains/Apprentissage", json={"color": "#ff0000"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "Apprentissage"
+    assert data["color"] == "#ff0000"
+    conn = sqlite3.connect(TEST_DB)
+    row = conn.execute("SELECT color FROM domains WHERE name='Apprentissage'").fetchone()
+    assert row[0] == "#ff0000"
+    conn.close()
+
+
+def test_patch_domain_rename_cascades_notes():
+    nid = _insert_note(domaine="Jeux vidéos")
+    resp = client.patch("/domains/Jeux vidéos", json={"name": "Jeux vidéos modifié"})
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Jeux vidéos modifié"
+    conn = sqlite3.connect(TEST_DB)
+    assert conn.execute(
+        "SELECT name FROM domains WHERE name='Jeux vidéos modifié'"
+    ).fetchone() is not None
+    assert conn.execute(
+        "SELECT name FROM domains WHERE name='Jeux vidéos'"
+    ).fetchone() is None
+    assert conn.execute(
+        "SELECT domaine FROM notes WHERE id=?", (nid,)
+    ).fetchone()[0] == "Jeux vidéos modifié"
+    conn.close()
+
+
+def test_patch_domain_name_and_color():
+    resp = client.patch("/domains/Organisation TDAH", json={"name": "TDAH", "color": "#aabbcc"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "TDAH"
+    assert data["color"] == "#aabbcc"
+
+
+def test_patch_domain_no_fields_422():
+    resp = client.patch("/domains/Plantes", json={})
+    assert resp.status_code == 422
+
+
+def test_patch_domain_empty_name_422():
+    resp = client.patch("/domains/Plantes", json={"name": ""})
+    assert resp.status_code == 422
+
+
+def test_patch_domain_a_trier_rename_400():
+    resp = client.patch("/domains/À trier", json={"name": "Autre"})
+    assert resp.status_code == 400
+    assert resp.json()["error"] == "cannot_rename_default_domain"
+
+
+def test_patch_domain_duplicate_name_409():
+    resp = client.patch("/domains/Plantes", json={"name": "Apprentissage"})
+    assert resp.status_code == 409
+
+
+def test_patch_domain_unknown_404():
+    resp = client.patch("/domains/Inexistant", json={"color": "#ff0000"})
+    assert resp.status_code == 404
