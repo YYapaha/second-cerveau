@@ -442,22 +442,35 @@ async function patchTitre(note, newTitre) {
 }
 
 async function patchDomaine(note, newDomaine) {
-  if (!newDomaine || newDomaine === note.domaine) return;
+  console.log('[patchDomaine] appelé', { noteId: note?.id, cur: note?.domaine, nouveau: newDomaine });
+  if (!newDomaine || newDomaine === note.domaine) {
+    console.log('[patchDomaine] no-op — même domaine ou vide');
+    return;
+  }
   try {
+    const body = JSON.stringify({ domaine: newDomaine });
+    console.log('[patchDomaine] PATCH', `${API}/notes/${note.id}`, body);
     const resp = await fetch(`${API}/notes/${note.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domaine: newDomaine }),
+      body,
     });
+    const respText = await resp.text();
+    console.log('[patchDomaine] réponse', resp.status, respText);
     if (!resp.ok) return;
     const update = n => n.id === note.id ? { ...n, domaine: newDomaine } : n;
+    const matched = state.notes.filter(n => n.id === note.id);
+    console.log('[patchDomaine] notes matchées dans state:', matched.length, '— openNote.id:', state.openNote?.id, '=== note.id:', note.id);
     setState({
       notes:    state.notes.map(update),
       openNote: state.openNote?.id === note.id
         ? { ...state.openNote, domaine: newDomaine }
         : state.openNote,
     });
-  } catch { /* silencieux */ }
+    console.log('[patchDomaine] setState ok — openNote.domaine désormais:', state.openNote?.domaine);
+  } catch (e) {
+    console.error('[patchDomaine] erreur fetch:', e);
+  }
 }
 
 function renderModal() {

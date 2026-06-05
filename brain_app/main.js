@@ -171,6 +171,7 @@ function createWindow() {
     },
   });
   win.loadFile('index.html');
+  win.webContents.openDevTools({ mode: 'detach' }); // DEBUG — retirer après dev
   win.maximize();
   win.on('close', (e) => {
     if (!app.isQuitting) { e.preventDefault(); win.hide(); updateTray(); }
