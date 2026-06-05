@@ -139,29 +139,6 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
 .scroll { position: relative; z-index: 2; flex: 1; overflow-y: auto; overflow-x: hidden; padding: 6px 20px 90px; }
 
 /* ============================================================
-   À trier
-   ============================================================ */
-.une-head { display: flex; align-items: center; gap: 10px; margin: 8px 2px 12px; }
-.une-head .trier-icon { width: 13px; height: 13px; color: var(--d-trier); }
-.rail { display: flex; gap: 12px; overflow-x: auto; padding: 2px 2px 10px; scroll-snap-type: x mandatory; }
-.rail::-webkit-scrollbar { height: 0; }
-.fcard { scroll-snap-align: start; flex: 0 0 220px; cursor: pointer;
-  border-radius: var(--r-card); border: 1px solid var(--stroke);
-  background: var(--glass); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
-  padding: 15px 15px 14px; position: relative; overflow: hidden;
-  transition: transform .3s var(--ease-out), border-color .3s var(--ease), background .3s var(--ease);
-  min-height: 138px; display: flex; flex-direction: column; }
-.fcard:hover { transform: translateY(-3px); border-color: var(--stroke-hi); background: var(--glass-2); }
-.fcard .glow { position: absolute; inset: 0; opacity: 0; transition: opacity .3s var(--ease); pointer-events: none;
-  background: radial-gradient(120% 80% at 0% 0%, color-mix(in oklch, var(--accent) 22%, transparent), transparent 60%); }
-.fcard:hover .glow { opacity: 1; }
-.fcard .ftitle { font-weight: 600; font-size: 14.5px; line-height: 1.25; letter-spacing: -0.01em; color: var(--ink); }
-.fcard .finsight { font-size: 12.5px; line-height: 1.45; color: var(--ink-2); margin-top: 8px; flex: 1;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.fcard .fmeta { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-.fcard.highlighted { border-color: color-mix(in oklch, var(--accent) 60%, var(--stroke-hi)); }
-
-/* ============================================================
    Domain dot + meta time
    ============================================================ */
 .ddot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
