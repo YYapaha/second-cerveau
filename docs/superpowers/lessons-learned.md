@@ -91,6 +91,66 @@ input.addEventListener('keydown', async e => {
 
 ---
 
+## 2026-06-06 — Optimistic update manquant : ancien nom revient après rename
+
+**Symptôme :** Après un rename de domaine, l'ancien nom réapparaît au prochain clic. Les notes du domaine disparaissent de leur section. L'activeFilter pointe vers un nom qui n'existe plus.
+
+**Causes racines (3) :**
+
+1. `patchDomain` mettait à jour `DOMAINS`/`DOMAIN_ORDER` APRÈS le fetch (async). Tout `render()` pendant l'attente du serveur utilisait l'ancien état → flash du vieux nom.
+
+2. `state.notes[i].domaine` n'était jamais mis à jour après un rename. `renderSections` groupait par `n.domaine` (ancien nom) → les notes disparaissaient de la nouvelle section.
+
+3. `state.activeFilter` n'était pas mis à jour → le filtre pointait vers un nom supprimé de `DOMAIN_ORDER`.
+
+**Fix appliqué — Optimistic update synchrone avant le fetch :**
+
+```js
+// AVANT le fetch : mise à jour de tout l'état en mémoire
+DOMAIN_ORDER[idx] = newName;
+DOMAINS[newName]  = { ...DOMAINS[oldName], label: newName };
+delete DOMAINS[oldName];
+setState({
+  notes:        state.notes.map(n => n.domaine === oldName ? { ...n, domaine: newName } : n),
+  activeFilter: state.activeFilter === oldName ? newName : state.activeFilter,
+});
+// Snapshot avant modification pour rollback propre sur erreur serveur
+```
+
+**Règle à retenir :**
+> Toute opération async qui modifie un nom/clé utilisé dans `state` ET dans `DOMAINS`/`DOMAIN_ORDER` doit faire une mise à jour optimiste synchrone de TOUS ces états avant le fetch, avec rollback sur erreur. Ne jamais attendre le `await` pour mettre à jour le rendu.
+
+---
+
+## 2026-06-06 — `keyup` Space active le `<button>` parent même avec `stopPropagation` sur `keydown`
+
+**Symptôme :** Après avoir bloqué `keydown` propagation, la barre Espace ferme encore l'input inline dans un button. Les clics gauche (sélectionner du texte) continuent aussi de fermer l'édition de manière intermittente.
+
+**Cause racine :**
+Les navigateurs activent un `<button>` via Space sur `keyup`, pas `keydown`. Bloquer `keydown` ne suffit pas. De plus, tout `render()` (déclenché par un événement qui bulle) détruit l'input puisqu'il est dans le DOM du button.
+
+La seule solution robuste : **ne jamais injecter d'input interactif à l'intérieur d'un `<button>`**.
+
+**Fix appliqué — Input flottant dans `document.body` :**
+
+```js
+// Récupérer la position du label
+const rect = label.getBoundingClientRect();
+const cs   = window.getComputedStyle(label);
+
+// Input positionné en fixed sur document.body — hors du <button>
+input.style.cssText = `position:fixed; left:${rect.left}px; top:${rect.top}px; ...`;
+label.style.visibility = 'hidden'; // cache le label sans casser le layout
+document.body.appendChild(input);  // HORS du <button>
+
+// Cleanup: input.remove() + label.style.visibility = ''
+```
+
+**Règle à retenir :**
+> Un `<input>` interactif ne doit jamais être injecté à l'intérieur d'un `<button>`. Les événements clavier et souris créent des effets de bord non-contrôlables (keyup Space, click, focus). Utiliser `getBoundingClientRect()` + `position:fixed` sur `document.body` comme pour un tooltip.
+
+---
+
 ## Template pour les prochaines entrées
 
 ```
