@@ -295,6 +295,54 @@ function renderFilters() {
       _colorInput.click();
     });
   });
+
+  container.querySelectorAll('.dlabel').forEach(label => {
+    if (label.dataset.locked) return;
+    label.addEventListener('dblclick', e => {
+      e.stopPropagation();
+      const pill = label.closest('.fpill');
+      const domainName = pill?.dataset.filter;
+      if (!domainName) return;
+
+      const original = label.textContent;
+      const input = document.createElement('input');
+      input.className = 'dlabel-input';
+      input.value = original;
+      input.style.cssText = `
+        background: transparent; border: none; border-bottom: 1px solid var(--stroke-hi);
+        color: inherit; font: inherit; width: ${Math.max(60, original.length * 8)}px;
+        outline: none; padding: 0;
+      `;
+      label.replaceWith(input);
+      input.focus();
+      input.select();
+
+      const confirm = async () => {
+        if (!input.isConnected) return;
+        const newName = input.value.trim();
+        const span = document.createElement('span');
+        span.className = 'dlabel';
+        span.textContent = newName || original;
+        input.replaceWith(span);
+        if (newName && newName !== original) {
+          await patchDomain(domainName, { name: newName });
+        }
+      };
+
+      const cancel = () => {
+        const span = document.createElement('span');
+        span.className = 'dlabel';
+        span.textContent = original;
+        if (input.isConnected) input.replaceWith(span);
+      };
+
+      input.addEventListener('keydown', async e => {
+        if (e.key === 'Enter')  { e.preventDefault(); await confirm(); }
+        if (e.key === 'Escape') { cancel(); }
+      });
+      input.addEventListener('blur', confirm);
+    });
+  });
 }
 
 // ── Render: sections ──────────────────────────────────────────────────────────
