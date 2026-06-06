@@ -376,3 +376,14 @@ def test_patch_domain_duplicate_name_409():
 def test_patch_domain_unknown_404():
     resp = client.patch("/domains/Inexistant", json={"color": "#ff0000"})
     assert resp.status_code == 404
+
+
+def test_patch_note_with_renamed_domain_valid():
+    """After a rename, patching a note to the new name must succeed."""
+    # "Jeux vidéos modifié" was created in test_patch_domain_rename_cascades_notes
+    nid = _insert_note(domaine="Apprentissage")
+    resp = client.patch(f"/notes/{nid}", json={"domaine": "Jeux vidéos modifié"})
+    assert resp.status_code == 200
+    conn = sqlite3.connect(TEST_DB)
+    assert conn.execute("SELECT domaine FROM notes WHERE id=?", (nid,)).fetchone()[0] == "Jeux vidéos modifié"
+    conn.close()

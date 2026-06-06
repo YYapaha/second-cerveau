@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 import dropbox as dbx_mod
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
-from brain_agent import init_db as _init_db, get_dropbox, DOMAINS as VALID_DOMAINS
+from brain_agent import init_db as _init_db, get_dropbox
 
 DB_PATH = Path(__file__).parent / "brain.db"
 
@@ -271,8 +271,12 @@ def patch_note(note_id: str, body: dict):
 
     if not titre and not domaine:
         raise HTTPException(status_code=422, detail="titre_court ou domaine requis")
-    if domaine and domaine not in VALID_DOMAINS:
-        raise HTTPException(status_code=422, detail=f"domaine invalide : {domaine}")
+    if domaine:
+        conn_v = get_db()
+        valid  = {r["name"] for r in conn_v.execute("SELECT name FROM domains").fetchall()}
+        conn_v.close()
+        if domaine not in valid:
+            raise HTTPException(status_code=422, detail=f"domaine invalide : {domaine}")
 
     conn = get_db()
     if titre:
