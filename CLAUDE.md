@@ -219,8 +219,37 @@ notes (
 | `docs/superpowers/specs/` | Specs de design |
 | `docs/superpowers/plans/` | Plans d'implémentation |
 
+## Lecture rapide — démarrage de session
+
+> Lire ces fichiers en priorité au début de chaque session pour avoir le contexte complet.
+
+### Toujours lire
+
+| Fichier | Pourquoi |
+|---|---|
+| `docs/superpowers/lessons-learned.md` | Bugs réels rencontrés + règles à ne pas répéter |
+
+### Plans actifs (⏳ À FAIRE)
+
+| Fichier plan | Fichier spec | But en une ligne |
+|---|---|---|
+| `docs/superpowers/plans/2026-06-04-plan1-securite-stabilite.md` | `docs/superpowers/specs/2026-06-04-plan1-securite-stabilite-design.md` | Sécuriser `bot_cloud.py` : OPENAI non-bloquante, /ping, /health, error handler |
+| `docs/superpowers/plans/2026-06-04-plan2-unification-llm.md` | `docs/superpowers/specs/2026-06-04-plan2-unification-llm-design.md` | Centraliser tous les appels LLM dans `core.py` via Groq |
+| `docs/superpowers/plans/2026-06-04-plan3-deduplication-refactoring.md` | `docs/superpowers/specs/2026-06-04-plan3-deduplication-refactoring-design.md` | Extraire couche Dropbox dans `dropbox_client.py`, dédupliquer helpers |
+| `docs/superpowers/plans/2026-06-04-plan4-tests.md` | `docs/superpowers/specs/2026-06-04-plan4-tests-design.md` | Ajouter ~36 tests sur `core.py`, `dropbox_client.py`, pipeline |
+| `docs/superpowers/plans/2026-06-02-brain-integration.md` | *(pas de spec séparée)* | Inclure `note_du_jour.json` dans le message météo Telegram |
+
+### Travaux en cours non commités
+
+| Fichier | État |
+|---|---|
+| `core.py` | Modifications non commitées (lié plan2/4 — vérifier avant de commencer) |
+| `tests/test_core.py` | Tests non commités (idem) |
+
+---
+
 ## Tests
 
 ```bash
-python -m pytest tests/ -v   # 23 tests (brain_agent + brain_server)
+python -m pytest tests/ -v   # 108 tests (brain_agent + brain_server + core + dropbox + pipeline)
 ```
