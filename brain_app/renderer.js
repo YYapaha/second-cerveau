@@ -5,7 +5,7 @@ const API = window.BRAIN_API_URL || 'http://127.0.0.1:7842';
 
 // ── Domain config ─────────────────────────────────────────────────────────────
 
-const DOMAINS = {
+let DOMAINS = {
   'Travail':           { key: 'travail',       label: 'Travail',       color: 'var(--d-travail)' },
   'Apprentissage':     { key: 'apprentissage', label: 'Apprentissage', color: 'var(--d-apprentissage)' },
   'Projets perso':     { key: 'projets',       label: 'Projets perso', color: 'var(--d-projets)' },
@@ -14,7 +14,7 @@ const DOMAINS = {
   'Organisation TDAH': { key: 'tdah',          label: 'Organisation',  color: 'var(--d-tdah)' },
   'À trier': { key: 'trier', label: 'À trier', color: 'var(--d-trier)' },
 };
-const DOMAIN_ORDER = ['Travail', 'Apprentissage', 'Projets perso', 'Jeux vidéos', 'Plantes', 'Organisation TDAH', 'À trier'];
+let DOMAIN_ORDER = ['Travail', 'Apprentissage', 'Projets perso', 'Jeux vidéos', 'Plantes', 'Organisation TDAH', 'À trier'];
 const META_DOM = { key: 'meta', label: 'Méta-fiches', color: 'var(--d-meta)' };
 
 // ── SVG Icons ─────────────────────────────────────────────────────────────────
@@ -152,6 +152,19 @@ function parseLiens(sourcesIds) {
 
 function domainConfig(domaine) {
   return DOMAINS[domaine] || { key: 'unknown', label: domaine || '?', color: 'var(--ink-3)' };
+}
+
+async function loadDomains() {
+  try {
+    const data = await fetch(`${API}/domains`).then(r => r.json());
+    DOMAIN_ORDER = data.map(d => d.name);
+    DOMAINS = {};
+    data.forEach(d => {
+      DOMAINS[d.name] = { key: d.name.toLowerCase().replace(/\s+/g, '_'), label: d.name, color: d.color };
+    });
+  } catch {
+    // keep fallback hardcoded values — server may not be ready yet
+  }
 }
 
 function mapNote(raw) {
@@ -997,6 +1010,7 @@ async function loadData(silent = true) {
   initChat();
   initBlocsResize();
   initZen();
+  await loadDomains();
   await loadData(false); // premier chargement avec animations
   setInterval(() => loadData(true), 2 * 60 * 1000); // rafraîchir toutes les 2 min (silencieux)
   animate('#topbar, #chat-bar, #filter-bar', {
