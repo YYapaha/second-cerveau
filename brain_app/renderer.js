@@ -178,6 +178,8 @@ const _colorInput = (() => {
   return inp;
 })();
 let _colorTarget = null;
+let _labelClickTimer = null;
+let _labelClickDomain = null;
 
 _colorInput.addEventListener('change', async () => {
   if (!_colorTarget) return;
@@ -186,6 +188,44 @@ _colorInput.addEventListener('change', async () => {
   _colorInput.style.pointerEvents = 'none';
   await patchDomain(target, { color: _colorInput.value });
 });
+
+function showRename(domainName) {
+  const pill  = document.querySelector(`.fpill[data-filter="${CSS.escape(domainName)}"]`);
+  const label = pill?.querySelector('.dlabel');
+  if (!label || label.dataset.locked) return;
+
+  const original = DOMAINS[domainName]?.label || domainName;
+  const input = document.createElement('input');
+  input.className = 'dlabel-input';
+  input.value = original;
+  input.style.cssText = `background:transparent;border:none;border-bottom:1px solid var(--stroke-hi);color:inherit;font:inherit;width:${Math.max(60, original.length * 8)}px;outline:none;padding:0;`;
+  label.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const doConfirm = async () => {
+    if (!input.isConnected) return;
+    const newName = input.value.trim();
+    const span = document.createElement('span');
+    span.className = 'dlabel';
+    span.textContent = newName || original;
+    input.replaceWith(span);
+    if (newName && newName !== original) await patchDomain(domainName, { name: newName });
+  };
+
+  const doCancel = () => {
+    const span = document.createElement('span');
+    span.className = 'dlabel';
+    span.textContent = original;
+    if (input.isConnected) input.replaceWith(span);
+  };
+
+  input.addEventListener('keydown', async e => {
+    if (e.key === 'Enter')  { e.preventDefault(); await doConfirm(); }
+    if (e.key === 'Escape') { doCancel(); }
+  });
+  input.addEventListener('blur', doConfirm);
+}
 
 function mapNote(raw) {
   const cr = (() => {
@@ -296,51 +336,27 @@ function renderFilters() {
     });
   });
 
-  container.querySelectorAll('.dlabel').forEach(label => {
-    if (label.dataset.locked) return;
-    label.addEventListener('dblclick', e => {
-      e.stopPropagation();
-      const pill = label.closest('.fpill');
-      const domainName = pill?.dataset.filter;
+  // Double-click rename: tracked by domain name (survives DOM rebuild between clicks)
+  container.querySelectorAll('.dlabel:not([data-locked])').forEach(label => {
+    label.addEventListener('click', e => {
+      e.stopPropagation(); // prevent bubble to .fpill so setState isn't called twice
+      const domainName = label.closest('.fpill')?.dataset.filter;
       if (!domainName) return;
 
-      const original = label.textContent;
-      const input = document.createElement('input');
-      input.className = 'dlabel-input';
-      input.value = original;
-      input.style.cssText = `
-        background: transparent; border: none; border-bottom: 1px solid var(--stroke-hi);
-        color: inherit; font: inherit; width: ${Math.max(60, original.length * 8)}px;
-        outline: none; padding: 0;
-      `;
-      label.replaceWith(input);
-      input.focus();
-      input.select();
+      if (_labelClickTimer && _labelClickDomain === domainName) {
+        clearTimeout(_labelClickTimer);
+        _labelClickTimer = null;
+        _labelClickDomain = null;
+        showRename(domainName);
+        return;
+      }
 
-      const confirm = async () => {
-        if (!input.isConnected) return;
-        const newName = input.value.trim();
-        const span = document.createElement('span');
-        span.className = 'dlabel';
-        span.textContent = newName || original;
-        input.replaceWith(span);
-        if (newName && newName !== original) {
-          await patchDomain(domainName, { name: newName });
-        }
-      };
-
-      const cancel = () => {
-        const span = document.createElement('span');
-        span.className = 'dlabel';
-        span.textContent = original;
-        if (input.isConnected) input.replaceWith(span);
-      };
-
-      input.addEventListener('keydown', async e => {
-        if (e.key === 'Enter')  { e.preventDefault(); await confirm(); }
-        if (e.key === 'Escape') { cancel(); }
-      });
-      input.addEventListener('blur', confirm);
+      _labelClickDomain = domainName;
+      _labelClickTimer = setTimeout(() => {
+        _labelClickTimer = null;
+        _labelClickDomain = null;
+      }, 300);
+      setState({ activeFilter: domainName });
     });
   });
 }
