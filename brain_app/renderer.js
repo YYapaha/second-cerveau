@@ -195,36 +195,51 @@ function showRename(domainName) {
   if (!label || label.dataset.locked) return;
 
   const original = DOMAINS[domainName]?.label || domainName;
+  const rect = label.getBoundingClientRect();
+  const cs   = window.getComputedStyle(label);
+
+  // Input flottant dans document.body — HORS du <button> pour éviter tout bubbling
   const input = document.createElement('input');
   input.className = 'dlabel-input';
   input.value = original;
-  input.style.cssText = `background:transparent;border:none;border-bottom:1px solid var(--stroke-hi);color:inherit;font:inherit;width:${Math.max(60, original.length * 8)}px;outline:none;padding:0;`;
-  label.replaceWith(input);
+  input.style.cssText = [
+    'position:fixed',
+    `left:${rect.left}px`,
+    `top:${rect.top}px`,
+    `width:${Math.max(80, rect.width + 40)}px`,
+    `height:${rect.height || 18}px`,
+    `font:${cs.font}`,
+    `letter-spacing:${cs.letterSpacing}`,
+    `color:${cs.color}`,
+    'background:rgba(12,12,24,0.95)',
+    'border:none',
+    'border-bottom:1px solid var(--stroke-hi)',
+    'outline:none',
+    'padding:0 3px',
+    'z-index:9999',
+    'border-radius:2px',
+  ].join(';');
+
+  label.style.visibility = 'hidden';
+  document.body.appendChild(input);
   input.focus();
   input.select();
+
+  const cleanup = () => {
+    if (input.isConnected) input.remove();
+    if (label.isConnected) label.style.visibility = '';
+  };
 
   const doConfirm = async () => {
     if (!input.isConnected) return;
     const newName = input.value.trim();
-    const span = document.createElement('span');
-    span.className = 'dlabel';
-    span.textContent = newName || original;
-    input.replaceWith(span);
+    cleanup();
     if (newName && newName !== original) await patchDomain(domainName, { name: newName });
   };
 
-  const doCancel = () => {
-    const span = document.createElement('span');
-    span.className = 'dlabel';
-    span.textContent = original;
-    if (input.isConnected) input.replaceWith(span);
-  };
-
-  input.addEventListener('click', e => e.stopPropagation()); // empêche le click de remonter au <button> parent
   input.addEventListener('keydown', async e => {
-    e.stopPropagation(); // empêche Espace d'activer le <button> parent
     if (e.key === 'Enter')  { e.preventDefault(); await doConfirm(); }
-    if (e.key === 'Escape') { doCancel(); }
+    if (e.key === 'Escape') { e.preventDefault(); cleanup(); }
   });
   input.addEventListener('blur', doConfirm);
 }
@@ -558,33 +573,50 @@ async function patchDomaine(note, newDomaine) {
 }
 
 async function patchDomain(currentName, updates) {
-  const pill = document.querySelector(`.fpill[data-filter="${CSS.escape(currentName)}"]`);
-  const dot  = pill?.querySelector('.ddot');
-  if (dot) animate(dot, { opacity: [0.4, 1], duration: 400, ease: 'outCubic' });
+  const isRename     = !!(updates.name && updates.name !== currentName);
+  const resolvedName = isRename ? updates.name : currentName;
+  const savedIdx     = DOMAIN_ORDER.indexOf(currentName);
+  const savedEntry   = DOMAINS[currentName] ? { ...DOMAINS[currentName] } : null;
+  const savedNotes   = state.notes;
+  const savedActive  = state.activeFilter;
+  const resolvedColor = updates.color ?? savedEntry?.color;
 
+  // ── Mise à jour optimiste synchrone (avant le fetch) ──────────────────
+  if (isRename) {
+    if (savedIdx >= 0) DOMAIN_ORDER[savedIdx] = resolvedName;
+    DOMAINS[resolvedName] = { ...savedEntry, label: resolvedName, color: resolvedColor };
+    delete DOMAINS[currentName];
+    setState({
+      notes:        state.notes.map(n => n.domaine === currentName ? { ...n, domaine: resolvedName } : n),
+      activeFilter: state.activeFilter === currentName ? resolvedName : state.activeFilter,
+    });
+  } else if (updates.color) {
+    if (DOMAINS[currentName]) DOMAINS[currentName].color = resolvedColor;
+    render();
+  }
+
+  // ── Persistance serveur ────────────────────────────────────────────────
   try {
     const resp = await fetch(`${API}/domains/${encodeURIComponent(currentName)}`, {
-      method: 'PATCH',
+      method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
+      body:    JSON.stringify(updates),
     });
-    if (!resp.ok) {
-      if (pill) { pill.style.outline = '1px solid red'; setTimeout(() => { pill.style.outline = ''; }, 800); }
-      return;
-    }
-    const updated = await resp.json();
-    const oldName = currentName;
-    if (updates.name && updates.name !== oldName) {
-      const idx = DOMAIN_ORDER.indexOf(oldName);
-      if (idx >= 0) DOMAIN_ORDER[idx] = updated.name;
-      DOMAINS[updated.name] = { ...DOMAINS[oldName], label: updated.name, color: updated.color || DOMAINS[oldName].color };
-      delete DOMAINS[oldName];
-    } else {
-      if (DOMAINS[oldName]) DOMAINS[oldName].color = updated.color;
-    }
-    render();
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    // Succès — l'état optimiste est correct, rien à faire
   } catch {
-    if (pill) { pill.style.outline = '1px solid red'; setTimeout(() => { pill.style.outline = ''; }, 800); }
+    // Rollback : restaurer l'état avant la modification
+    if (isRename) {
+      if (savedIdx >= 0) DOMAIN_ORDER[savedIdx] = currentName;
+      if (savedEntry) DOMAINS[currentName] = savedEntry;
+      delete DOMAINS[resolvedName];
+      setState({ notes: savedNotes, activeFilter: savedActive });
+    } else if (updates.color && savedEntry) {
+      DOMAINS[currentName] = savedEntry;
+      render();
+    }
+    const errPill = document.querySelector(`.fpill[data-filter="${CSS.escape(currentName)}"]`);
+    if (errPill) { errPill.style.outline = '1px solid red'; setTimeout(() => { errPill.style.outline = ''; }, 1000); }
   }
 }
 
