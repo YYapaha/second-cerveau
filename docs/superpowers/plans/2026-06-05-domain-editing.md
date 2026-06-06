@@ -2,9 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Statut : ✅ TERMINÉ — 2026-06-06 — 108 tests verts**
+
 **Goal:** Allow renaming domains and changing their dot color directly from the Electron UI, persisted in a SQLite `domains` table.
 
 **Architecture:** New `domains(name, color, position)` table seeded at `init_db()`. Two new API endpoints (`GET /domains`, `PATCH /domains/{name}`) replace hardcoded lists. Frontend loads domains dynamically at startup; filter pills get inline rename (double-click label) and color picker (click dot).
+
+**Bug post-implémentation résolu :** le `dblclick` ne se déclenchait jamais car `setState` appelle `render()` inconditionnellement, reconstruisant le DOM entre les deux clicks d'un double-clic. Remplacé par un compteur de clicks manuel (`_labelClickTimer` / `_labelClickDomain`) au niveau module, qui track le nom de domaine (string) plutôt qu'une référence d'élément. Voir `docs/superpowers/lessons-learned.md`.
 
 **Tech Stack:** Python + FastAPI + SQLite, vanilla JS + anime.js, Electron.
 

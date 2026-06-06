@@ -106,6 +106,8 @@ Re-traite toutes les notes **sauf domaine=Travail** avec le nouveau prompt GPT-4
 | Plan 2 — Electron UI | `docs/superpowers/plans/2026-06-02-brain-electron-ui.md` | ✅ TERMINÉ |
 | Plan 3 — UI Redesign | `docs/superpowers/plans/2026-06-03-brain-ui-redesign.md` | ✅ TERMINÉ — dark cosmos |
 | Plan 4 — Enrichissement | `docs/superpowers/plans/2026-06-03-brain-notes-enrichissement.md` | ✅ TERMINÉ |
+| Compact Notes Layout | `docs/superpowers/plans/2026-06-05-compact-notes-layout.md` | ✅ TERMINÉ — lignes ~27px |
+| Domain Editing | `docs/superpowers/plans/2026-06-05-domain-editing.md` | ✅ TERMINÉ — 108 tests verts |
 | Plan 3-bot — Intégration bot | `docs/superpowers/plans/2026-06-02-brain-integration.md` | ⏳ À FAIRE |
 | Plan 5 — Note personnelle | *(spec à écrire)* | ⏳ FUTUR |
 
