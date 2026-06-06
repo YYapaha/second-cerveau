@@ -220,7 +220,9 @@ function showRename(domainName) {
     if (input.isConnected) input.replaceWith(span);
   };
 
+  input.addEventListener('click', e => e.stopPropagation()); // empêche le click de remonter au <button> parent
   input.addEventListener('keydown', async e => {
+    e.stopPropagation(); // empêche Espace d'activer le <button> parent
     if (e.key === 'Enter')  { e.preventDefault(); await doConfirm(); }
     if (e.key === 'Escape') { doCancel(); }
   });

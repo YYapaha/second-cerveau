@@ -57,6 +57,40 @@ label.addEventListener('click', e => {
 
 ---
 
+## 2026-06-06 — input inline dans un `<button>` : click et Espace ferment l'édition
+
+**Symptôme :** Un clic gauche à l'intérieur de l'input de renommage ferme l'édition immédiatement. Appuyer sur Espace ferme aussi l'édition.
+
+**Cause racine :**
+L'`<input>` est un enfant d'un `<button>`. Dans Chromium/Electron :
+- `click` sur l'input **bulle** vers le `<button>` parent, dont le listener appelle `setState` → `render()` → DOM reconstruit → input disparu.
+- La barre **Espace** active un `<button>` HTML même si le focus est sur un élément enfant : Chromium fire un `click` sur le bouton → même destruction.
+
+```
+click ou Space sur <input>
+  → bulle vers <button class="fpill">
+  → setState({ activeFilter }) → render() → DOM reconstruit → input disparu
+```
+
+**Fix appliqué :**
+Deux `stopPropagation` dans la fonction `showRename()` :
+
+```js
+input.addEventListener('click', e => e.stopPropagation()); // bloque la remontée du click
+input.addEventListener('keydown', async e => {
+  e.stopPropagation(); // bloque Espace (et autres touches) vers le <button>
+  if (e.key === 'Enter')  { e.preventDefault(); await doConfirm(); }
+  if (e.key === 'Escape') { doCancel(); }
+});
+```
+
+**Règle à retenir :**
+> Ne jamais injecter un `<input>` ou `<textarea>` à l'intérieur d'un `<button>` sans bloquer `click` et `keydown` avec `stopPropagation()`. Les deux remontent au bouton et déclenchent ses handlers natifs (click + activation Espace).
+
+**Fichiers concernés :** `brain_app/renderer.js` — fonction `showRename()`.
+
+---
+
 ## Template pour les prochaines entrées
 
 ```
