@@ -167,6 +167,26 @@ async function loadDomains() {
   }
 }
 
+// ── Color picker (shared, initialized once) ───────────────────────────────────
+
+const _colorInput = (() => {
+  const inp = document.createElement('input');
+  inp.type = 'color';
+  inp.id = '_domain-color-input';
+  inp.style.cssText = 'position:fixed;opacity:0;width:1px;height:1px;pointer-events:none;';
+  document.body.appendChild(inp);
+  return inp;
+})();
+let _colorTarget = null;
+
+_colorInput.addEventListener('change', async () => {
+  if (!_colorTarget) return;
+  const target = _colorTarget;
+  _colorTarget = null;
+  _colorInput.style.pointerEvents = 'none';
+  await patchDomain(target, { color: _colorInput.value });
+});
+
 function mapNote(raw) {
   const cr = (() => {
     try { return JSON.parse(raw.contenu_riche || '{}'); }
@@ -246,7 +266,7 @@ function renderFilters() {
     `<button class="fpill${activeFilter === 'tous' ? ' active' : ''}" data-filter="tous">Tous</button>`,
     ...DOMAIN_ORDER.map(d => {
       const dom = domainConfig(d);
-      return `<button class="fpill${activeFilter === d ? ' active' : ''}" data-filter="${d}" style="--accent:${dom.color}"><span class="ddot"></span>${dom.label}</button>`;
+      return `<button class="fpill${activeFilter === d ? ' active' : ''}" data-filter="${d}" style="--accent:${dom.color}"><span class="ddot" data-domain="${d}"></span><span class="dlabel"${d === 'À trier' ? ' data-locked="true"' : ''}>${dom.label}</span></button>`;
     }),
     `<span class="sep"></span>`,
     `<button class="fpill" id="btn-sort">${ICONS.clock}${sort === 'recent' ? 'Récents' : 'Anciens'}</button>`,
@@ -260,6 +280,21 @@ function renderFilters() {
     setState({ sort: state.sort === 'recent' ? 'ancien' : 'recent' }));
   document.getElementById('btn-linked').addEventListener('click', () =>
     setState({ linkedOnly: !state.linkedOnly }));
+
+  container.querySelectorAll('.ddot[data-domain]').forEach(dot => {
+    dot.addEventListener('click', e => {
+      e.stopPropagation();
+      _colorTarget = dot.dataset.domain;
+      _colorInput.value = DOMAINS[_colorTarget]?.color?.startsWith('#')
+        ? DOMAINS[_colorTarget].color
+        : '#888888';
+      const rect = dot.getBoundingClientRect();
+      _colorInput.style.left = rect.left + 'px';
+      _colorInput.style.top  = rect.bottom + 'px';
+      _colorInput.style.pointerEvents = 'auto';
+      _colorInput.click();
+    });
+  });
 }
 
 // ── Render: sections ──────────────────────────────────────────────────────────
@@ -454,6 +489,37 @@ async function patchDomaine(note, newDomaine) {
         : state.openNote,
     });
   } catch { /* silencieux */ }
+}
+
+async function patchDomain(currentName, updates) {
+  const pill = document.querySelector(`.fpill[data-filter="${CSS.escape(currentName)}"]`);
+  const dot  = pill?.querySelector('.ddot');
+  if (dot) animate(dot, { opacity: [0.4, 1], duration: 400, ease: 'outCubic' });
+
+  try {
+    const resp = await fetch(`${API}/domains/${encodeURIComponent(currentName)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!resp.ok) {
+      if (pill) { pill.style.outline = '1px solid red'; setTimeout(() => { pill.style.outline = ''; }, 800); }
+      return;
+    }
+    const updated = await resp.json();
+    const oldName = currentName;
+    if (updates.name && updates.name !== oldName) {
+      const idx = DOMAIN_ORDER.indexOf(oldName);
+      if (idx >= 0) DOMAIN_ORDER[idx] = updated.name;
+      DOMAINS[updated.name] = { ...DOMAINS[oldName], label: updated.name, color: updated.color || DOMAINS[oldName].color };
+      delete DOMAINS[oldName];
+    } else {
+      if (DOMAINS[oldName]) DOMAINS[oldName].color = updated.color;
+    }
+    render();
+  } catch {
+    if (pill) { pill.style.outline = '1px solid red'; setTimeout(() => { pill.style.outline = ''; }, 800); }
+  }
 }
 
 function renderModal() {
