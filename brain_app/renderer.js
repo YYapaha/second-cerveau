@@ -966,9 +966,11 @@ function renderConstellation() {
     if (nodeDrag) {
       const dx = e.clientX - nodeDrag.startClientX;
       const dy = e.clientY - nodeDrag.startClientY;
-      if (Math.abs(dx) > 6 || Math.abs(dy) > 6) nodeDrag.moved = true;
-      nodeDrag.el.style.left = (nodeDrag.origX + dx) + 'px';
-      nodeDrag.el.style.top  = (nodeDrag.origY + dy) + 'px';
+      if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+        nodeDrag.moved = true;
+        nodeDrag.el.style.left = (nodeDrag.origX + dx) + 'px';
+        nodeDrag.el.style.top  = (nodeDrag.origY + dy) + 'px';
+      }
       return;
     }
     if (!constellationDrag) return;
@@ -978,6 +980,7 @@ function renderConstellation() {
   });
   inner.addEventListener('pointerup', e => {
     if (nodeDrag) {
+      constellationDrag = null;
       if (!nodeDrag.moved) {
         const note = state.filteredList.find(n => n.id === nodeDrag.id);
         if (note) openModal(note);
@@ -997,6 +1000,7 @@ function renderConstellation() {
   });
   inner.addEventListener('pointerleave', () => {
     constellationDrag = null;
+    nodeDrag = null;
     view.querySelectorAll('.edge.lit').forEach(path => path.classList.remove('lit'));
   });
 
