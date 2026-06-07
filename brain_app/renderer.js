@@ -293,6 +293,7 @@ function renderTopbar() {
   const btnR = document.getElementById('btn-refresh');
   if (btnR) {
     btnR.innerHTML = ICONS.refresh;
+    btnR.setAttribute('aria-label', 'Rafraîchir les notes');
     if (!btnR._bound) {
       btnR.addEventListener('click', () => {
         if (window.syncBrain) window.syncBrain();
@@ -490,7 +491,15 @@ function renderCornerStats() {
 // ── Modal ─────────────────────────────────────────────────────────────────────
 
 function openModal(note) { setState({ openNote: note }); }
-function closeModal()    { setState({ openNote: null }); }
+async function closeModal() {
+  const scrim = document.getElementById('modal-scrim');
+  if (!scrim || scrim._closing) return;
+  scrim._closing = true;
+  const modal = scrim.querySelector('.modal');
+  if (modal) await animate(modal, { opacity: [1, 0], translateY: [0, 10], scale: [1, 0.97], duration: 180, ease: 'inQuart' }).finished;
+  await animate(scrim, { opacity: [1, 0], duration: 130, ease: 'inQuart' }).finished;
+  setState({ openNote: null });
+}
 
 function navModal(dir) {
   if (!state.openNote) return;
@@ -555,21 +564,44 @@ async function patchTitre(note, newTitre) {
 
 async function patchDomaine(note, newDomaine) {
   if (!newDomaine || newDomaine === note.domaine) return;
+
+  const savedDomaine = note.domaine;
+  const update = (d, n) => n.id === note.id ? { ...n, domaine: d } : n;
+
+  // Optimistic update
+  setState({
+    notes:    state.notes.map(update.bind(null, newDomaine)),
+    openNote: state.openNote?.id === note.id
+      ? { ...state.openNote, domaine: newDomaine }
+      : state.openNote,
+  });
+
   try {
     const resp = await fetch(`${API}/notes/${note.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domaine: newDomaine }),
     });
-    if (!resp.ok) return;
-    const update = n => n.id === note.id ? { ...n, domaine: newDomaine } : n;
+    if (!resp.ok) {
+      // Rollback
+      setState({
+        notes:    state.notes.map(update.bind(null, savedDomaine)),
+        openNote: state.openNote?.id === note.id
+          ? { ...state.openNote, domaine: savedDomaine }
+          : state.openNote,
+      });
+      const domrow = document.getElementById('modal-domrow');
+      if (domrow) { domrow.style.outline = '1px solid red'; setTimeout(() => { domrow.style.outline = ''; }, 1000); }
+    }
+  } catch {
+    // Rollback on network error
     setState({
-      notes:    state.notes.map(update),
+      notes:    state.notes.map(update.bind(null, savedDomaine)),
       openNote: state.openNote?.id === note.id
-        ? { ...state.openNote, domaine: newDomaine }
+        ? { ...state.openNote, domaine: savedDomaine }
         : state.openNote,
     });
-  } catch { /* silencieux */ }
+  }
 }
 
 async function patchDomain(currentName, updates) {
@@ -829,7 +861,6 @@ function initChat() {
 
 let constellationPan = { x: 0, y: 0 };
 let constellationDrag = null;
-let constellationHover = null;
 
 function computeLayout(notes, w, h) {
   const cx = w / 2, cy = h / 2;
@@ -885,24 +916,20 @@ function renderConstellation() {
   const h = (panel.clientHeight || window.innerHeight || 900) - 60; // minus topbar
   const { pos, edges } = computeLayout(notes, w, h);
   const pan = constellationPan;
-  const hov = constellationHover;
 
   const edgeSvg = edges.map(e => {
     const a = pos[e.a], b = pos[e.b];
     if (!a || !b) return '';
     const mx = (a.x + b.x) / 2;
     const my = (a.y + b.y) / 2 - 28;
-    const lit = hov && (e.a === hov || e.b === hov);
-    const accent = lit ? `style="--accent:${e.color}"` : '';
-    return `<path class="edge${lit ? ' lit' : ''}" ${accent} d="M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}"/>`;
+    return `<path class="edge" data-ea="${e.a}" data-eb="${e.b}" style="--accent:${e.color}" d="M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}"/>`;
   }).join('');
 
   const nodesHtml = notes.map(n => {
     const p = pos[n.id];
     if (!p) return '';
     const dom = domainConfig(n.domaine);
-    const isHov = hov === n.id;
-    return `<div class="cnode${n.est_meta ? ' meta' : ''}${isHov ? ' active' : ''}"
+    return `<div class="cnode${n.est_meta ? ' meta' : ''}"
       data-cid="${n.id}"
       style="left:${p.x}px;top:${p.y}px;--accent:${dom.color}">
       <div class="bubble"><span class="ddot"></span><span class="ct">${n.titre}</span></div>
@@ -941,12 +968,12 @@ function renderConstellation() {
 
   view.querySelectorAll('.cnode').forEach(el => {
     el.addEventListener('mouseenter', () => {
-      constellationHover = el.dataset.cid;
-      renderConstellation();
+      const id = el.dataset.cid;
+      document.querySelectorAll(`.edge[data-ea="${id}"], .edge[data-eb="${id}"]`)
+        .forEach(path => path.classList.add('lit'));
     });
     el.addEventListener('mouseleave', () => {
-      constellationHover = null;
-      renderConstellation();
+      document.querySelectorAll('.edge.lit').forEach(path => path.classList.remove('lit'));
     });
     el.addEventListener('click', e => {
       e.stopPropagation();
@@ -1147,6 +1174,7 @@ async function loadData(silent = true) {
       fetch(`${API}/notes?limit=200`).then(r => r.json()),
       fetch(`${API}/blocs`).then(r => r.json()).catch(() => []),
     ]);
+    await loadDomains(); // re-sync domain names/colors from DB (handles rename + first-load timing)
     state._silent = silent;
     setState({
       status: statusData,
