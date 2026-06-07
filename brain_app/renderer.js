@@ -862,6 +862,7 @@ function initChat() {
 let constellationPan = { x: 0, y: 0 };
 let constellationDrag = null;
 let constellationPositions = JSON.parse(localStorage.getItem('brain_constellation_positions') || '{}');
+let nodeDrag = null;
 
 function computeLayout(notes, w, h) {
   const cx = w / 2, cy = h / 2;
@@ -962,12 +963,38 @@ function renderConstellation() {
     constellationDrag = { x: e.clientX - pan.x, y: e.clientY - pan.y };
   });
   inner.addEventListener('pointermove', e => {
+    if (nodeDrag) {
+      const dx = e.clientX - nodeDrag.startClientX;
+      const dy = e.clientY - nodeDrag.startClientY;
+      if (Math.abs(dx) > 6 || Math.abs(dy) > 6) nodeDrag.moved = true;
+      nodeDrag.el.style.left = (nodeDrag.origX + dx) + 'px';
+      nodeDrag.el.style.top  = (nodeDrag.origY + dy) + 'px';
+      return;
+    }
     if (!constellationDrag) return;
     constellationPan = { x: e.clientX - constellationDrag.x, y: e.clientY - constellationDrag.y };
     document.getElementById('constel-world').style.transform =
       `translate(${constellationPan.x}px,${constellationPan.y}px)`;
   });
-  inner.addEventListener('pointerup',    () => { constellationDrag = null; });
+  inner.addEventListener('pointerup', e => {
+    if (nodeDrag) {
+      if (!nodeDrag.moved) {
+        const note = state.filteredList.find(n => n.id === nodeDrag.id);
+        if (note) openModal(note);
+      } else {
+        const dx = e.clientX - nodeDrag.startClientX;
+        const dy = e.clientY - nodeDrag.startClientY;
+        constellationPositions[nodeDrag.id] = { x: nodeDrag.origX + dx, y: nodeDrag.origY + dy };
+        localStorage.setItem('brain_constellation_positions', JSON.stringify(constellationPositions));
+        nodeDrag = null;
+        renderConstellation();
+        return;
+      }
+      nodeDrag = null;
+      return;
+    }
+    constellationDrag = null;
+  });
   inner.addEventListener('pointerleave', () => {
     constellationDrag = null;
     view.querySelectorAll('.edge.lit').forEach(path => path.classList.remove('lit'));
@@ -982,10 +1009,19 @@ function renderConstellation() {
     el.addEventListener('mouseleave', () => {
       view.querySelectorAll('.edge.lit').forEach(path => path.classList.remove('lit'));
     });
-    el.addEventListener('click', e => {
+    el.addEventListener('pointerdown', e => {
       e.stopPropagation();
-      const note = state.filteredList.find(n => n.id === el.dataset.cid);
-      if (note) openModal(note);
+      const currentPos = constellationPositions[el.dataset.cid] || pos[el.dataset.cid];
+      nodeDrag = {
+        id:           el.dataset.cid,
+        el,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        origX:        currentPos.x,
+        origY:        currentPos.y,
+        moved:        false,
+      };
+      el.setPointerCapture(e.pointerId);
     });
   });
 }
