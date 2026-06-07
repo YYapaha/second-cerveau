@@ -1,5 +1,6 @@
 import { animate, stagger } from './node_modules/animejs/dist/modules/index.js';
 import { initZen, activateZen, deactivateZen } from './zen.js';
+import { ICONS } from './icons.js';
 
 const API = window.BRAIN_API_URL || 'http://127.0.0.1:7842';
 
@@ -17,69 +18,7 @@ let DOMAINS = {
 let DOMAIN_ORDER = ['Travail', 'Apprentissage', 'Projets perso', 'Jeux vidéos', 'Plantes', 'Organisation TDAH', 'À trier'];
 const META_DOM = { key: 'meta', label: 'Méta-fiches', color: 'var(--d-meta)' };
 
-// ── SVG Icons ─────────────────────────────────────────────────────────────────
-
-const ICONS = {
-  logo: `<svg viewBox="0 0 64 64" fill="none" width="26" height="26">
-    <circle cx="32" cy="32" r="9.5" stroke="currentColor" stroke-width="2.4"/>
-    <circle cx="32" cy="32" r="2.6" fill="currentColor"/>
-    <ellipse cx="32" cy="32" rx="22" ry="22" stroke="currentColor" stroke-width="1.4" opacity="0.28"/>
-    <circle cx="51" cy="21" r="3.4" fill="currentColor"/>
-    <circle cx="14" cy="44" r="2.6" fill="currentColor"/>
-    <path d="M40.5 27 C45 23.5, 47.5 22.5, 51 21" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
-    <path d="M24 38 C19.5 41, 16.5 42.5, 14 44" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-  </svg>`,
-  star: `<svg viewBox="0 0 24 24" fill="none" width="13" height="13">
-    <path d="M12 3l2.4 5.6 6 .5-4.6 4 1.4 5.9L12 16.9 6.8 19l1.4-5.9L3.6 9.1l6-.5L12 3z" fill="currentColor"/>
-  </svg>`,
-  trier: `<svg viewBox="0 0 24 24" fill="none" width="13" height="13">
-    <path d="M3 6h18M7 12h10M11 18h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-  </svg>`,
-  spark: `<svg viewBox="0 0 24 24" fill="none" width="17" height="17">
-    <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-  </svg>`,
-  chev: `<svg viewBox="0 0 24 24" fill="none" width="14" height="14">
-    <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`,
-  link: `<svg viewBox="0 0 24 24" fill="none" width="13" height="13">
-    <path d="M9 12h6M10 8H8a4 4 0 100 8h2M14 8h2a4 4 0 110 8h-2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
-  </svg>`,
-  clock: `<svg viewBox="0 0 24 24" fill="none" width="13" height="13">
-    <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.7"/>
-    <path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
-  </svg>`,
-  grid: `<svg viewBox="0 0 24 24" fill="none" width="13" height="13">
-    <rect x="3.5" y="3.5" width="7" height="7" rx="1.6" stroke="currentColor" stroke-width="1.8"/>
-    <rect x="13.5" y="3.5" width="7" height="7" rx="1.6" stroke="currentColor" stroke-width="1.8"/>
-    <rect x="3.5" y="13.5" width="7" height="7" rx="1.6" stroke="currentColor" stroke-width="1.8"/>
-    <rect x="13.5" y="13.5" width="7" height="7" rx="1.6" stroke="currentColor" stroke-width="1.8"/>
-  </svg>`,
-  nodes: `<svg viewBox="0 0 24 24" fill="none" width="13" height="13">
-    <circle cx="6" cy="6" r="2.6" stroke="currentColor" stroke-width="1.8"/>
-    <circle cx="18" cy="9" r="2.6" stroke="currentColor" stroke-width="1.8"/>
-    <circle cx="9" cy="18" r="2.6" stroke="currentColor" stroke-width="1.8"/>
-    <path d="M8.1 7.2C12 8 14 8.2 15.6 8.4M7.4 8.3c.6 3 .9 5 1.1 7.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-  </svg>`,
-  close: `<svg viewBox="0 0 24 24" fill="none" width="15" height="15">
-    <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-  </svg>`,
-  arrow: `<svg viewBox="0 0 24 24" fill="none" width="15" height="15">
-    <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`,
-  arrowLeft: `<svg viewBox="0 0 24 24" fill="none" width="15" height="15">
-    <path d="M19 12H5M11 6l-6 6 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`,
-  trash: `<svg viewBox="0 0 24 24" fill="none" width="14" height="14">
-    <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`,
-  externalLink: `<svg viewBox="0 0 24 24" fill="none" width="12" height="12">
-    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`,
-  refresh: `<svg viewBox="0 0 24 24" fill="none" width="14" height="14">
-    <path d="M4 4v5h5M20 20v-5h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M4 9a9 9 0 0115.36-3.36L20 9M4 15a9 9 0 0015.36 3.36L20 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-  </svg>`,
-};
+// Icons are imported from icons.js
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -278,7 +217,7 @@ function renderTopbar() {
   const btnZ = document.getElementById('btn-zen');
   btnG.innerHTML = `${ICONS.grid} Grille`;
   btnC.innerHTML = `${ICONS.nodes} Constellation`;
-  btnZ.innerHTML = '🎮 Zen';
+  btnZ.innerHTML = `${ICONS.zen} Zen`;
   btnG.classList.toggle('active', state.mode === 'grille');
   btnC.classList.toggle('active', state.mode === 'constellation');
   btnZ.classList.toggle('active', state.mode === 'zen');
@@ -308,10 +247,21 @@ function renderTopbar() {
     `<span class="dot"></span>${total_notes} notes · ${meta_fiches_count} synthèse${meta_fiches_count !== 1 ? 's' : ''}`;
 }
 
-// ── Render: section À trier ───────────────────────────────────────────────────
+// ── Render: statusbar ─────────────────────────────────────────────────────────
 
-function renderATrier() {
-  // Remplacé par la section collapsible standard dans renderSections()
+function renderStatusbar() {
+  const sb = document.getElementById('statusbar');
+  if (!sb) return;
+  const { filteredList, status, activeFilter, sort, linkedOnly } = state;
+  const syncStr = relTimeFromDate(status.last_sync);
+  sb.innerHTML = `
+    <span class="s"><span class="ic"></span>${String(filteredList.length).padStart(2,'0')} affichées / ${status.total_notes}</span>
+    <span class="s">${status.meta_fiches_count} synthèse</span>
+    <span class="s">sync ${syncStr}</span>
+    <span class="right">
+      <span class="s">${activeFilter === 'tous' ? 'tous domaines' : domainConfig(activeFilter).label}</span>
+      <span class="s">${sort === 'recent' ? '↓ récents' : '↑ anciens'}${linkedOnly ? ' · liées' : ''}</span>
+    </span>`;
 }
 
 // ── Render: filters ───────────────────────────────────────────────────────────
@@ -417,16 +367,16 @@ function renderSections() {
     });
   });
 
-  container.querySelectorAll('.nrow').forEach(el => {
+  container.querySelectorAll('.ncard').forEach(el => {
     el.addEventListener('click', () => {
       const note = state.filteredList.find(n => n.id === el.dataset.id);
       if (note) openModal(note);
     });
   });
 
-  const rows = container.querySelectorAll('.nrow');
-  if (rows.length && !state._silent) {
-    animate(rows, { opacity: [0, 1], translateY: ['6px', '0px'], delay: stagger(20), duration: 320, ease: 'outCubic' });
+  const cards = container.querySelectorAll('.ncard');
+  if (cards.length && !state._silent) {
+    animate(cards, { opacity: [0, 1], translateY: ['8px', '0px'], delay: stagger(15), duration: 300, ease: 'outCubic' });
   }
 }
 
@@ -440,25 +390,27 @@ function buildSectionHtml(dom, notes) {
       <span class="line"></span>
       <span class="chev">${ICONS.chev}</span>
     </div>
-    <div class="cards">${notes.map(buildNoteRowHtml).join('')}</div>
+    <div class="cards">${notes.map(buildNoteCardHtml).join('')}</div>
   </div>`;
 }
 
 function buildNoteCardHtml(n) {
   const dom = domainConfig(n.domaine);
-  const firstTag = n.parsedTags[0];
+  const tags = n.parsedTags.slice(0, 2).map(t => `<span class="tag">#${t}</span>`).join('');
   const linked = n.liens.length;
   return `<button class="ncard" data-id="${n.id}" style="--accent:${dom.color}">
     <div class="row1">
       <span class="ddot"></span>
       <span class="ntitle">${n.titre}</span>
-      ${n.est_meta ? `<span class="metachip" style="margin-left:auto">synthèse</span>` : ''}
+      ${n.est_meta ? `<span class="metachip">synthèse</span>` : ''}
     </div>
     <div class="ninsight">${n.insight}</div>
     <div class="nfoot">
-      <span class="metatime">${relTime(n._days)}</span>
-      ${firstTag ? `<span class="tag">#${firstTag}</span>` : ''}
-      ${linked > 0 ? `<span class="meta-badge">${ICONS.link}<span class="metatime">${linked}</span></span>` : ''}
+      <div class="tags-inline">${tags}</div>
+      <div class="nmeta">
+        ${linked > 0 ? `<span class="links">${ICONS.link}${linked}</span>` : ''}
+        <span class="metatime">${relTime(n._days)}</span>
+      </div>
     </div>
   </button>`;
 }
@@ -474,19 +426,6 @@ function buildNoteRowHtml(n) {
   </button>`;
 }
 
-// ── Render: corner stats ──────────────────────────────────────────────────────
-
-function renderCornerStats() {
-  const { filteredList, status, activeFilter, sort, linkedOnly, mode } = state;
-  const bl = document.getElementById('corner-bl');
-  const br = document.getElementById('corner-br');
-  const show = mode === 'grille';
-  bl.classList.toggle('hidden', !show);
-  br.classList.toggle('hidden', !show);
-  if (!show) return;
-  bl.innerHTML = `N: ${String(filteredList.length).padStart(2, '0')} (${status.total_notes})<br>S: ${status.meta_fiches_count} · sync ${relTimeFromDate(status.last_sync)}`;
-  br.innerHTML = `${activeFilter === 'tous' ? 'all' : activeFilter}<br>${sort === 'recent' ? '↓ récents' : '↑ anciens'}${linkedOnly ? ' · liées' : ''}`;
-}
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 
@@ -844,7 +783,7 @@ function initChat() {
 
       responseEl.textContent = data.reponse || '—';
 
-      document.querySelectorAll('.nrow, .ncard').forEach(el => el.classList.remove('highlighted'));
+      document.querySelectorAll('.ncard').forEach(el => el.classList.remove('highlighted'));
       if (data.sources?.length) {
         const ids = new Set(data.sources.map(s => String(s.id)));
         document.querySelectorAll('[data-id]').forEach(el => {
@@ -857,175 +796,163 @@ function initChat() {
   });
 }
 
-// ── Constellation ─────────────────────────────────────────────────────────────
+// ── Constellation (force-directed) ────────────────────────────────────────────
 
 let constellationPan = { x: 0, y: 0 };
 let constellationDrag = null;
-let constellationPositions = JSON.parse(localStorage.getItem('brain_constellation_positions') || '{}');
-let nodeDrag = null;
-
-function computeLayout(notes, w, h) {
-  const cx = w / 2, cy = h / 2;
-  const R = Math.min(w, h) * 0.26;
-  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  const byDom = {};
-  notes.forEach(n => { (byDom[n.domaine] = byDom[n.domaine] || []).push(n); });
-  const pos = {};
-
-  DOMAIN_ORDER.forEach((dk, di) => {
-    const ang = (di / DOMAIN_ORDER.length) * Math.PI * 2 - Math.PI / 2;
-    const hx = cx + Math.cos(ang) * R;
-    const hy = cy + Math.sin(ang) * R;
-    const list = byDom[dk] || [];
-    const nonMeta = list.filter(n => !n.est_meta);
-    list.forEach((n, i) => {
-      if (n.est_meta) {
-        pos[n.id] = { x: cx + (i - 0.5) * 26, y: cy };
-        return;
-      }
-      const k = nonMeta.length;
-      const a2 = ang + (i - (k - 1) / 2) * 0.5;
-      const rr = 64 + (i % 2) * 22;
-      pos[n.id] = {
-        x: clamp(hx + Math.cos(a2) * rr * 0.55, 96, w - 96),
-        y: clamp(hy + Math.sin(a2) * rr,         84, h - 70),
-      };
-    });
-  });
-
-  const seen = new Set();
-  const edges = [];
-  notes.forEach(n => {
-    (n.liens || []).forEach(tid => {
-      if (!pos[n.id] || !pos[tid]) return;
-      const key = [n.id, tid].sort().join('-');
-      if (seen.has(key)) return;
-      seen.add(key);
-      edges.push({ a: n.id, b: tid, key, color: domainConfig(n.domaine).color });
-    });
-  });
-
-  return { pos, edges };
-}
 
 function renderConstellation() {
   const view = document.getElementById('constel-view');
   view.classList.remove('hidden');
+  view.innerHTML = '';
 
   const notes = state.filteredList;
   const panel = document.getElementById('panel');
-  const w = panel.clientWidth  || window.innerWidth  || 800;
-  const h = (panel.clientHeight || window.innerHeight || 900) - 60; // minus topbar
-  const { pos, edges } = computeLayout(notes, w, h);
-  notes.forEach(n => {
-    if (constellationPositions[n.id]) pos[n.id] = constellationPositions[n.id];
+  const W = panel.clientWidth  || window.innerWidth  || 1080;
+  const H = (panel.clientHeight || window.innerHeight || 1920) - 60;
+
+  const domKeys = DOMAIN_ORDER.filter(dk => notes.some(n => n.domaine === dk));
+  const cx = W / 2, cy = H / 2, Rx = W * 0.30, Ry = H * 0.33;
+
+  // Estimate half-size of each node bubble for collision detection
+  const half = n => ({ w: Math.min(150, 64 + n.titre.length * 3.4), h: 24 });
+
+  // Seed each node near its domain hub
+  const hubs = {};
+  domKeys.forEach((dk, di) => {
+    const ang = (di / domKeys.length) * Math.PI * 2 - Math.PI / 2;
+    hubs[dk] = { x: cx + Math.cos(ang) * Rx, y: cy + Math.sin(ang) * Ry };
   });
-  const pan = constellationPan;
 
-  const edgeSvg = edges.map(e => {
-    const a = pos[e.a], b = pos[e.b];
-    if (!a || !b) return '';
-    const mx = (a.x + b.x) / 2;
-    const my = (a.y + b.y) / 2 - 28;
-    return `<path class="edge" data-ea="${e.a}" data-eb="${e.b}" style="--accent:${e.color}" d="M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}"/>`;
+  const nodeData = notes.map(n => {
+    const h = n.est_meta ? { x: cx, y: cy } : (hubs[n.domaine] || { x: cx, y: cy });
+    return { n, x: h.x + (Math.random() - 0.5) * 80, y: h.y + (Math.random() - 0.5) * 80, hub: h, hs: half(n) };
+  });
+
+  // Build edges (deduplicated)
+  const idOf = {};
+  nodeData.forEach(nd => { idOf[nd.n.id] = nd; });
+  const edges = [];
+  const seen = new Set();
+  notes.forEach(n => {
+    (n.liens || []).forEach(tid => {
+      if (!idOf[tid]) return;
+      const key = [n.id, tid].sort().join('-');
+      if (seen.has(key)) return;
+      seen.add(key);
+      edges.push([idOf[n.id], idOf[tid], n]);
+    });
+  });
+
+  // Force simulation: 220 iterations
+  for (let it = 0; it < 220; it++) {
+    nodeData.forEach(a => {
+      a.x += (a.hub.x - a.x) * (a.n.est_meta ? 0.010 : 0.015);
+      a.y += (a.hub.y - a.y) * (a.n.est_meta ? 0.010 : 0.015);
+    });
+    edges.forEach(([a, b]) => {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const f = (d - 240) * 0.005;
+      const ux = dx / d, uy = dy / d;
+      a.x += ux * f; a.y += uy * f; b.x -= ux * f; b.y -= uy * f;
+    });
+    for (let i = 0; i < nodeData.length; i++) {
+      for (let j = i + 1; j < nodeData.length; j++) {
+        const a = nodeData[i], b = nodeData[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const ox = (a.hs.w + b.hs.w + 32) - Math.abs(dx);
+        const oy = (a.hs.h + b.hs.h + 26) - Math.abs(dy);
+        if (ox > 0 && oy > 0) {
+          if (ox < oy) { const s = (dx >= 0 ? 1 : -1) * ox / 2; a.x -= s; b.x += s; }
+          else { const s = (dy >= 0 ? 1 : -1) * oy / 2; a.y -= s; b.y += s; }
+        }
+      }
+    }
+    nodeData.forEach(a => {
+      a.x = Math.max(a.hs.w + 18, Math.min(W - a.hs.w - 18, a.x));
+      a.y = Math.max(a.hs.h + 96, Math.min(H - a.hs.h - 64, a.y));
+    });
+  }
+
+  const pos = {};
+  nodeData.forEach(nd => { pos[nd.n.id] = { x: nd.x, y: nd.y }; });
+
+  // Build SVG edges
+  const edgeSvg = edges.map(([a, b, n]) => {
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 - 36;
+    return `<path class="edge" data-ea="${n.id}" data-eb="${b.n.id}" style="--accent:${domainConfig(n.domaine).color}" d="M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}"/>`;
   }).join('');
 
+  // Hub labels
+  const hubLabels = domKeys.map(dk => {
+    const items = nodeData.filter(nd => nd.n.domaine === dk && !nd.n.est_meta);
+    if (!items.length) return '';
+    const d = domainConfig(dk);
+    const minY = Math.min(...items.map(nd => nd.y));
+    const avgX = items.reduce((s, nd) => s + nd.x, 0) / items.length;
+    return `<div class="hub" style="--accent:${d.color};left:${avgX}px;top:${minY - 50}px">
+      <div class="hlabel"><span class="ddot"></span>${d.label}</div></div>`;
+  }).join('');
+
+  // Node bubbles
   const nodesHtml = notes.map(n => {
-    const p = pos[n.id];
-    if (!p) return '';
-    const dom = domainConfig(n.domaine);
-    return `<div class="cnode${n.est_meta ? ' meta' : ''}"
-      data-cid="${n.id}"
-      style="left:${p.x}px;top:${p.y}px;--accent:${dom.color}">
-      <div class="bubble"><span class="ddot"></span><span class="ct">${n.titre}</span></div>
-    </div>`;
+    const p = pos[n.id]; if (!p) return '';
+    const d = domainConfig(n.domaine);
+    return `<div class="cnode${n.est_meta ? ' meta' : ''}" data-cid="${n.id}" style="left:${p.x}px;top:${p.y}px;--accent:${d.color}">
+      <div class="bubble"><span class="ddot"></span><span class="ct">${n.titre}</span></div></div>`;
   }).join('');
 
-  const legendHtml = DOMAIN_ORDER.map(d => {
-    const dom = domainConfig(d);
-    return `<div class="li" style="--accent:${dom.color}"><span class="ddot"></span><span>${dom.label}</span></div>`;
+  const legendHtml = DOMAIN_ORDER.filter(dk => notes.some(n => n.domaine === dk)).map(dk => {
+    const d = domainConfig(dk);
+    return `<div class="li" style="--accent:${d.color}"><span class="ddot"></span><span>${d.label}</span></div>`;
   }).join('');
 
+  const pan = constellationPan;
   view.innerHTML = `
     <div class="constel" id="constel-inner">
       <span class="hint">glisser pour naviguer</span>
       <div class="world" id="constel-world" style="transform:translate(${pan.x}px,${pan.y}px)">
         <svg class="links">${edgeSvg}</svg>
+        ${hubLabels}
         ${nodesHtml}
       </div>
       <div class="legend">${legendHtml}</div>
-    </div>
-  `;
+    </div>`;
 
   const inner = document.getElementById('constel-inner');
+  let dragMoved = false;
 
   inner.addEventListener('pointerdown', e => {
+    dragMoved = false;
     constellationDrag = { x: e.clientX - pan.x, y: e.clientY - pan.y };
   });
   inner.addEventListener('pointermove', e => {
-    if (nodeDrag) {
-      const dx = e.clientX - nodeDrag.startClientX;
-      const dy = e.clientY - nodeDrag.startClientY;
-      if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
-        nodeDrag.moved = true;
-        nodeDrag.el.style.left = (nodeDrag.origX + dx) + 'px';
-        nodeDrag.el.style.top  = (nodeDrag.origY + dy) + 'px';
-      }
-      return;
-    }
     if (!constellationDrag) return;
     constellationPan = { x: e.clientX - constellationDrag.x, y: e.clientY - constellationDrag.y };
+    if (Math.abs(constellationPan.x - pan.x) + Math.abs(constellationPan.y - pan.y) > 4) dragMoved = true;
     document.getElementById('constel-world').style.transform =
       `translate(${constellationPan.x}px,${constellationPan.y}px)`;
   });
-  inner.addEventListener('pointerup', e => {
-    if (nodeDrag) {
-      constellationDrag = null;
-      if (!nodeDrag.moved) {
-        const note = state.filteredList.find(n => n.id === nodeDrag.id);
-        if (note) openModal(note);
-      } else {
-        const dx = e.clientX - nodeDrag.startClientX;
-        const dy = e.clientY - nodeDrag.startClientY;
-        constellationPositions[nodeDrag.id] = { x: nodeDrag.origX + dx, y: nodeDrag.origY + dy };
-        localStorage.setItem('brain_constellation_positions', JSON.stringify(constellationPositions));
-        nodeDrag = null;
-        renderConstellation();
-        return;
-      }
-      nodeDrag = null;
-      return;
-    }
-    constellationDrag = null;
-  });
+  inner.addEventListener('pointerup', () => { constellationDrag = null; });
   inner.addEventListener('pointerleave', () => {
     constellationDrag = null;
-    nodeDrag = null;
-    view.querySelectorAll('.edge.lit').forEach(path => path.classList.remove('lit'));
+    view.querySelectorAll('.edge.lit').forEach(p => p.classList.remove('lit'));
   });
 
   view.querySelectorAll('.cnode').forEach(el => {
     el.addEventListener('mouseenter', () => {
       const id = el.dataset.cid;
       view.querySelectorAll(`.edge[data-ea="${id}"], .edge[data-eb="${id}"]`)
-        .forEach(path => path.classList.add('lit'));
+        .forEach(p => p.classList.add('lit'));
     });
     el.addEventListener('mouseleave', () => {
-      view.querySelectorAll('.edge.lit').forEach(path => path.classList.remove('lit'));
+      view.querySelectorAll('.edge.lit').forEach(p => p.classList.remove('lit'));
     });
-    el.addEventListener('pointerdown', e => {
-      e.stopPropagation();
-      const currentPos = constellationPositions[el.dataset.cid] || pos[el.dataset.cid];
-      nodeDrag = {
-        id:           el.dataset.cid,
-        el,
-        startClientX: e.clientX,
-        startClientY: e.clientY,
-        origX:        currentPos.x,
-        origY:        currentPos.y,
-        moved:        false,
-      };
-      el.setPointerCapture(e.pointerId);
+    el.addEventListener('click', e => {
+      if (dragMoved) { e.stopPropagation(); return; }
+      const note = state.filteredList.find(n => n.id === el.dataset.cid);
+      if (note) openModal(note);
     });
   });
 }
@@ -1035,10 +962,9 @@ function renderConstellation() {
 function renderGrille() {
   document.getElementById('grille-view').classList.remove('hidden');
   document.getElementById('constel-view').classList.add('hidden');
-  renderATrier();
   renderFilters();
   renderSections();
-  renderCornerStats();
+  renderStatusbar();
 }
 
 function render() {
@@ -1057,11 +983,13 @@ function render() {
 
   deactivateZen();
 
+  const sb = document.getElementById('statusbar');
+  if (sb) sb.classList.toggle('hidden', state.mode !== 'grille');
+
   if (state.mode === 'grille') renderGrille();
   else {
     document.getElementById('grille-view').classList.add('hidden');
     renderConstellation();
-    renderCornerStats();
   }
   renderModal();
   renderBlocs();
@@ -1172,11 +1100,18 @@ function renderBlocs() {
   });
 }
 
+const BLOC_COLORS = {
+  travail:   'var(--d-travail)',
+  projets:   'var(--d-projets)',
+  blocnotes: 'var(--d-meta)',
+};
+
 function renderBlocCol({ name, titre, items }) {
   const uncheckedCount = items.filter(it => !state.checkedItems.has(`${name}:${it.idx}`)).length;
+  const dotColor = BLOC_COLORS[name] || 'var(--ink-4)';
   return `
     <div class="bloc-col">
-      <div class="bloc-col-header">${titre} <span style="opacity:.5">(${uncheckedCount})</span></div>
+      <div class="bloc-col-header"><span class="ddot" style="--accent:${dotColor}"></span>${titre} <span style="opacity:.5">(${uncheckedCount})</span></div>
       <div class="bloc-items">
         ${items.map(it => renderBlocItem(name, it)).join('')}
       </div>

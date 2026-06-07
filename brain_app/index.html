@@ -34,7 +34,7 @@
           <button id="btn-constellation"></button>
           <button id="btn-zen"></button>
         </div>
-        <button id="btn-refresh" title="Rafraîchir"></button>
+        <button id="btn-refresh" title="Rafraîchir" aria-label="Rafraîchir les notes"></button>
         <span class="pill-stat" id="pill-stat"><span class="dot"></span></span>
       </div>
 
@@ -62,14 +62,13 @@
       <!-- Onglet Zen -->
       <div id="zen-view" class="hidden"></div>
 
+      <!-- Status strip (remplace les corner stats) -->
+      <div class="statusbar" id="statusbar"></div>
+
       <!-- Blocs fixes (Travail / Projets / Bloc-notes) -->
       <section id="blocs-section">
         <div class="blocs-resize-handle" id="blocs-resize-handle"></div>
       </section>
-
-      <!-- Stats de coin (grille uniquement) -->
-      <div class="corner bl" id="corner-bl"></div>
-      <div class="corner br" id="corner-br"></div>
 
     </div><!-- /panel -->
   </div><!-- /stage -->

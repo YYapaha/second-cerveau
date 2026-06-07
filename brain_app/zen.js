@@ -1,15 +1,16 @@
 // zen.js — Shell de l'onglet Zen
+import { ICONS } from './icons.js';
 
 const ACTIVITIES = [
-  { id: 'aim',       icon: '🎯', label: 'Aim',      module: () => import('./activities/aim.js')    },
-  { id: 'solar',     icon: '🪐', label: 'Solaire',   module: () => import('./activities/solar.js')  },
-  { id: 'breath',    icon: '🫁', label: 'Respir.',   module: () => import('./activities/breath.js') },
-  { id: 'particles', icon: '✨', label: 'Particles', module: null },
-  { id: 'bubbles',   icon: '🫧', label: 'Bulles',    module: null },
-  { id: 'sliders',   icon: '🎚️', label: 'Tableau',   module: () => import('./activities/dashboard.js') },
-  { id: 'fluid',     icon: '🌊', label: 'Fluide',    module: null },
-  { id: 'ripple',    icon: '💧', label: 'Ondules',   module: null },
-  { id: 'kaleido',   icon: '🔮', label: 'Kaleido',   module: null },
+  { id: 'aim',       icon: 'target',   label: 'Aim',      module: () => import('./activities/aim.js')    },
+  { id: 'solar',     icon: 'orbit',    label: 'Solaire',  module: () => import('./activities/solar.js')  },
+  { id: 'breath',    icon: 'lungs',    label: 'Respir.',  module: () => import('./activities/breath.js') },
+  { id: 'particles', icon: 'sparkles', label: 'Particles',module: null },
+  { id: 'bubbles',   icon: 'bubbles',  label: 'Bulles',   module: null },
+  { id: 'sliders',   icon: 'sliders',  label: 'Tableau',  module: () => import('./activities/dashboard.js') },
+  { id: 'fluid',     icon: 'wave',     label: 'Fluide',   module: null },
+  { id: 'ripple',    icon: 'ripple',   label: 'Ondules',  module: null },
+  { id: 'kaleido',   icon: 'kaleido',  label: 'Kaleido',  module: null },
 ];
 
 let currentActivity = null;
@@ -46,9 +47,9 @@ export function initZen() {
   const bar = document.getElementById('zen-bottom-bar');
   ACTIVITIES.forEach(a => {
     const btn = document.createElement('button');
-    btn.className = 'zen-tab' + (a.module ? ' available' : '');
+    btn.className = 'zen-tab' + (a.module ? '' : ' locked');
     btn.dataset.id = a.id;
-    btn.innerHTML = `<span class="zen-tab-icon">${a.icon}</span><span class="zen-tab-label">${a.label}</span>`;
+    btn.innerHTML = `<span class="zen-tab-icon">${ICONS[a.icon] || ''}</span><span class="zen-tab-label">${a.label}</span>`;
     if (a.module) btn.addEventListener('click', () => loadActivity(a.id));
     bar.appendChild(btn);
   });
