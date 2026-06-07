@@ -5,8 +5,8 @@
   --void:        #08080c;
   --void-2:      #0b0b11;
   --grid-dot:    rgba(255, 255, 255, 0.035);
-  --glass:       rgba(255, 255, 255, 0.040);
-  --glass-2:     rgba(255, 255, 255, 0.060);
+  --glass:       rgba(255, 255, 255, 0.055);
+  --glass-2:     rgba(255, 255, 255, 0.085);
   --glass-hi:    rgba(255, 255, 255, 0.090);
   --stroke:      rgba(255, 255, 255, 0.085);
   --stroke-hi:   rgba(255, 255, 255, 0.150);
@@ -199,7 +199,8 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
   padding: 14px 16px 13px;
   transition: transform .25s var(--ease-out), border-color .25s var(--ease), background .25s var(--ease);
   overflow: hidden; }
-.ncard:hover { transform: translateX(2px); border-color: var(--stroke-hi); background: var(--glass-2); }
+.ncard:hover { transform: translateX(3px) scale(1.005); border-color: var(--stroke-hi); background: var(--glass-2);
+  box-shadow: var(--shadow-card), 0 0 22px color-mix(in oklch, var(--accent) 22%, transparent); }
 .ncard::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
   background: var(--accent); opacity: 0; transition: opacity .25s var(--ease); }
 .ncard:hover::after { opacity: 0.8; }
@@ -212,7 +213,7 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
 .ncard .tag { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
 .ncard .meta-badge { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; }
 .ncard .link-ic { width: 13px; height: 13px; color: var(--ink-3); }
-.metachip { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+.metachip { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
   color: color-mix(in oklch, var(--d-meta) 80%, white);
   border: 1px solid color-mix(in oklch, var(--d-meta) 35%, transparent);
   background: color-mix(in oklch, var(--d-meta) 12%, transparent);
@@ -241,13 +242,13 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
   color: var(--ink);
 }
 .nrow-tag {
-  font-family: var(--font-mono); font-size: 8.5px;
+  font-family: var(--font-mono); font-size: 10px;
   color: var(--ink-3); background: var(--glass);
   border-radius: 4px; padding: 1px 5px;
   flex-shrink: 0; white-space: nowrap;
 }
 .nrow-time {
-  font-family: var(--font-mono); font-size: 8.5px;
+  font-family: var(--font-mono); font-size: 10px;
   color: var(--ink-4); flex-shrink: 0; white-space: nowrap;
 }
 .nrow.highlighted { background: color-mix(in oklch, var(--accent) 10%, transparent); }
@@ -349,7 +350,7 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
   border-radius: var(--r-pill); border: 1px solid var(--stroke); background: var(--glass);
   backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
   white-space: nowrap; transition: all .25s var(--ease-out); box-shadow: var(--shadow-card); }
-.cnode:hover .bubble, .cnode.active .bubble {
+.cnode:hover .bubble {
   border-color: color-mix(in oklch, var(--accent) 60%, var(--stroke-hi));
   background: var(--glass-2); transform: scale(1.05);
   box-shadow: 0 0 24px color-mix(in oklch, var(--accent) 30%, transparent); }
@@ -412,6 +413,26 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
 }
 .title-editable:focus { border-bottom-color: var(--accent); }
 
+/* ============================================================
+   Focus-visible (Accessibilité clavier)
+   ============================================================ */
+:focus-visible { outline: none; }
+.ncard:focus-visible,
+.nrow:focus-visible,
+.fpill:focus-visible,
+.modeswitch button:focus-visible,
+.dpill:focus-visible,
+.closebtn:focus-visible,
+.navbtn:focus-visible,
+.deletebtn:focus-visible,
+.lrow:focus-visible,
+.bloc-add-btn:focus-visible,
+#btn-refresh:focus-visible {
+  outline: 2px solid oklch(0.72 0.13 255);
+  outline-offset: 2px;
+}
+.nrow:focus-visible { outline-offset: 1px; }
+
 .hidden { display: none !important; }
 
 #constel-view { flex: 1; position: relative; min-height: 0; }
@@ -452,7 +473,7 @@ html, body { margin: 0; height: 100%; background: var(--void); color: var(--ink)
 
 .bloc-col-header {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 10.5px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-4);

@@ -964,16 +964,19 @@ function renderConstellation() {
       `translate(${constellationPan.x}px,${constellationPan.y}px)`;
   });
   inner.addEventListener('pointerup',    () => { constellationDrag = null; });
-  inner.addEventListener('pointerleave', () => { constellationDrag = null; });
+  inner.addEventListener('pointerleave', () => {
+    constellationDrag = null;
+    view.querySelectorAll('.edge.lit').forEach(path => path.classList.remove('lit'));
+  });
 
   view.querySelectorAll('.cnode').forEach(el => {
     el.addEventListener('mouseenter', () => {
       const id = el.dataset.cid;
-      document.querySelectorAll(`.edge[data-ea="${id}"], .edge[data-eb="${id}"]`)
+      view.querySelectorAll(`.edge[data-ea="${id}"], .edge[data-eb="${id}"]`)
         .forEach(path => path.classList.add('lit'));
     });
     el.addEventListener('mouseleave', () => {
-      document.querySelectorAll('.edge.lit').forEach(path => path.classList.remove('lit'));
+      view.querySelectorAll('.edge.lit').forEach(path => path.classList.remove('lit'));
     });
     el.addEventListener('click', e => {
       e.stopPropagation();
