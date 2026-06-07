@@ -861,6 +861,7 @@ function initChat() {
 
 let constellationPan = { x: 0, y: 0 };
 let constellationDrag = null;
+let constellationPositions = JSON.parse(localStorage.getItem('brain_constellation_positions') || '{}');
 
 function computeLayout(notes, w, h) {
   const cx = w / 2, cy = h / 2;
@@ -915,6 +916,9 @@ function renderConstellation() {
   const w = panel.clientWidth  || window.innerWidth  || 800;
   const h = (panel.clientHeight || window.innerHeight || 900) - 60; // minus topbar
   const { pos, edges } = computeLayout(notes, w, h);
+  notes.forEach(n => {
+    if (constellationPositions[n.id]) pos[n.id] = constellationPositions[n.id];
+  });
   const pan = constellationPan;
 
   const edgeSvg = edges.map(e => {
