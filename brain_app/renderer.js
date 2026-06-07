@@ -799,7 +799,36 @@ function initChat() {
 // ── Constellation (force-directed) ────────────────────────────────────────────
 
 let constellationPan = { x: 0, y: 0 };
-let constellationDrag = null;
+
+function _constelSaveState() {
+  localStorage.setItem('constel-pan', JSON.stringify(constellationPan));
+  const view = document.getElementById('constel-view');
+  if (!view) return;
+  const positions = {};
+  view.querySelectorAll('.cnode').forEach(el => {
+    positions[el.dataset.cid] = { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
+  });
+  localStorage.setItem('constel-positions', JSON.stringify(positions));
+}
+
+function _constelUpdateEdges(view, id, newX, newY) {
+  const svg = view.querySelector('svg.links');
+  if (!svg) return;
+  svg.querySelectorAll(`.edge[data-ea="${id}"]`).forEach(path => {
+    const bEl = view.querySelector(`[data-cid="${path.dataset.eb}"]`);
+    if (!bEl) return;
+    const bx = parseFloat(bEl.style.left), by = parseFloat(bEl.style.top);
+    const mx = (newX + bx) / 2, my = (newY + by) / 2 - 36;
+    path.setAttribute('d', `M ${newX} ${newY} Q ${mx} ${my} ${bx} ${by}`);
+  });
+  svg.querySelectorAll(`.edge[data-eb="${id}"]`).forEach(path => {
+    const aEl = view.querySelector(`[data-cid="${path.dataset.ea}"]`);
+    if (!aEl) return;
+    const ax = parseFloat(aEl.style.left), ay = parseFloat(aEl.style.top);
+    const mx = (ax + newX) / 2, my = (ay + newY) / 2 - 36;
+    path.setAttribute('d', `M ${ax} ${ay} Q ${mx} ${my} ${newX} ${newY}`);
+  });
+}
 
 function renderConstellation() {
   const view = document.getElementById('constel-view');
@@ -814,10 +843,8 @@ function renderConstellation() {
   const domKeys = DOMAIN_ORDER.filter(dk => notes.some(n => n.domaine === dk));
   const cx = W / 2, cy = H / 2, Rx = W * 0.30, Ry = H * 0.33;
 
-  // Estimate half-size of each node bubble for collision detection
   const half = n => ({ w: Math.min(150, 64 + n.titre.length * 3.4), h: 24 });
 
-  // Seed each node near its domain hub
   const hubs = {};
   domKeys.forEach((dk, di) => {
     const ang = (di / domKeys.length) * Math.PI * 2 - Math.PI / 2;
@@ -844,39 +871,54 @@ function renderConstellation() {
     });
   });
 
-  // Force simulation: 220 iterations
-  for (let it = 0; it < 220; it++) {
-    nodeData.forEach(a => {
-      a.x += (a.hub.x - a.x) * (a.n.est_meta ? 0.010 : 0.015);
-      a.y += (a.hub.y - a.y) * (a.n.est_meta ? 0.010 : 0.015);
+  // Load saved positions — use them if they cover all current notes
+  const savedPositions = JSON.parse(localStorage.getItem('constel-positions') || 'null');
+  const allSaved = savedPositions && notes.every(n => savedPositions[n.id]);
+
+  if (allSaved) {
+    nodeData.forEach(nd => {
+      nd.x = savedPositions[nd.n.id].x;
+      nd.y = savedPositions[nd.n.id].y;
     });
-    edges.forEach(([a, b]) => {
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const d = Math.hypot(dx, dy) || 1;
-      const f = (d - 240) * 0.005;
-      const ux = dx / d, uy = dy / d;
-      a.x += ux * f; a.y += uy * f; b.x -= ux * f; b.y -= uy * f;
-    });
-    for (let i = 0; i < nodeData.length; i++) {
-      for (let j = i + 1; j < nodeData.length; j++) {
-        const a = nodeData[i], b = nodeData[j];
+  } else {
+    // Force simulation: 220 iterations
+    for (let it = 0; it < 220; it++) {
+      nodeData.forEach(a => {
+        a.x += (a.hub.x - a.x) * (a.n.est_meta ? 0.010 : 0.015);
+        a.y += (a.hub.y - a.y) * (a.n.est_meta ? 0.010 : 0.015);
+      });
+      edges.forEach(([a, b]) => {
         const dx = b.x - a.x, dy = b.y - a.y;
-        const ox = (a.hs.w + b.hs.w + 32) - Math.abs(dx);
-        const oy = (a.hs.h + b.hs.h + 26) - Math.abs(dy);
-        if (ox > 0 && oy > 0) {
-          if (ox < oy) { const s = (dx >= 0 ? 1 : -1) * ox / 2; a.x -= s; b.x += s; }
-          else { const s = (dy >= 0 ? 1 : -1) * oy / 2; a.y -= s; b.y += s; }
+        const d = Math.hypot(dx, dy) || 1;
+        const f = (d - 240) * 0.005;
+        const ux = dx / d, uy = dy / d;
+        a.x += ux * f; a.y += uy * f; b.x -= ux * f; b.y -= uy * f;
+      });
+      for (let i = 0; i < nodeData.length; i++) {
+        for (let j = i + 1; j < nodeData.length; j++) {
+          const a = nodeData[i], b = nodeData[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const ox = (a.hs.w + b.hs.w + 32) - Math.abs(dx);
+          const oy = (a.hs.h + b.hs.h + 26) - Math.abs(dy);
+          if (ox > 0 && oy > 0) {
+            if (ox < oy) { const s = (dx >= 0 ? 1 : -1) * ox / 2; a.x -= s; b.x += s; }
+            else { const s = (dy >= 0 ? 1 : -1) * oy / 2; a.y -= s; b.y += s; }
+          }
         }
       }
+      nodeData.forEach(a => {
+        a.x = Math.max(a.hs.w + 18, Math.min(W - a.hs.w - 18, a.x));
+        a.y = Math.max(a.hs.h + 96, Math.min(H - a.hs.h - 64, a.y));
+      });
     }
-    nodeData.forEach(a => {
-      a.x = Math.max(a.hs.w + 18, Math.min(W - a.hs.w - 18, a.x));
-      a.y = Math.max(a.hs.h + 96, Math.min(H - a.hs.h - 64, a.y));
-    });
   }
 
   const pos = {};
   nodeData.forEach(nd => { pos[nd.n.id] = { x: nd.x, y: nd.y }; });
+
+  // Load saved pan
+  const savedPan = JSON.parse(localStorage.getItem('constel-pan') || 'null');
+  if (savedPan) constellationPan = savedPan;
 
   // Build SVG edges
   const edgeSvg = edges.map(([a, b, n]) => {
@@ -908,11 +950,10 @@ function renderConstellation() {
     return `<div class="li" style="--accent:${d.color}"><span class="ddot"></span><span>${d.label}</span></div>`;
   }).join('');
 
-  const pan = constellationPan;
   view.innerHTML = `
     <div class="constel" id="constel-inner">
-      <span class="hint">glisser pour naviguer</span>
-      <div class="world" id="constel-world" style="transform:translate(${pan.x}px,${pan.y}px)">
+      <span class="hint">glisser pour naviguer · déplacer les bulles</span>
+      <div class="world" id="constel-world" style="transform:translate(${constellationPan.x}px,${constellationPan.y}px)">
         <svg class="links">${edgeSvg}</svg>
         ${hubLabels}
         ${nodesHtml}
@@ -920,27 +961,47 @@ function renderConstellation() {
       <div class="legend">${legendHtml}</div>
     </div>`;
 
+  // Persist force-directed positions immediately so layout is stable on next load
+  if (!allSaved) _constelSaveState();
+
   const inner = document.getElementById('constel-inner');
+  let panDrag  = null;   // { offsetX, offsetY }
+  let nodeDrag = null;   // { id, startX, startY, origX, origY }
   let dragMoved = false;
 
-  inner.addEventListener('pointerdown', e => {
-    dragMoved = false;
-    constellationDrag = { x: e.clientX - pan.x, y: e.clientY - pan.y };
-  });
-  inner.addEventListener('pointermove', e => {
-    if (!constellationDrag) return;
-    constellationPan = { x: e.clientX - constellationDrag.x, y: e.clientY - constellationDrag.y };
-    if (Math.abs(constellationPan.x - pan.x) + Math.abs(constellationPan.y - pan.y) > 4) dragMoved = true;
-    document.getElementById('constel-world').style.transform =
-      `translate(${constellationPan.x}px,${constellationPan.y}px)`;
-  });
-  inner.addEventListener('pointerup', () => { constellationDrag = null; });
-  inner.addEventListener('pointerleave', () => {
-    constellationDrag = null;
-    view.querySelectorAll('.edge.lit').forEach(p => p.classList.remove('lit'));
-  });
-
+  // ── Node drag ──────────────────────────────────────────────────────────────
   view.querySelectorAll('.cnode').forEach(el => {
+    el.addEventListener('pointerdown', e => {
+      e.stopPropagation(); // prevent pan from starting
+      dragMoved = false;
+      nodeDrag = {
+        id: el.dataset.cid,
+        startX: e.clientX, startY: e.clientY,
+        origX: parseFloat(el.style.left), origY: parseFloat(el.style.top),
+      };
+      el.setPointerCapture(e.pointerId);
+    });
+
+    el.addEventListener('pointermove', e => {
+      if (!nodeDrag || nodeDrag.id !== el.dataset.cid) return;
+      const dx = e.clientX - nodeDrag.startX;
+      const dy = e.clientY - nodeDrag.startY;
+      if (Math.abs(dx) + Math.abs(dy) > 4) dragMoved = true;
+      const newX = nodeDrag.origX + dx;
+      const newY = nodeDrag.origY + dy;
+      el.style.left = newX + 'px';
+      el.style.top  = newY + 'px';
+      _constelUpdateEdges(view, el.dataset.cid, newX, newY);
+    });
+
+    el.addEventListener('pointerup', () => {
+      if (!nodeDrag || nodeDrag.id !== el.dataset.cid) return;
+      nodeDrag = null;
+      _constelSaveState();
+    });
+
+    el.addEventListener('pointercancel', () => { nodeDrag = null; });
+
     el.addEventListener('mouseenter', () => {
       const id = el.dataset.cid;
       view.querySelectorAll(`.edge[data-ea="${id}"], .edge[data-eb="${id}"]`)
@@ -949,11 +1010,39 @@ function renderConstellation() {
     el.addEventListener('mouseleave', () => {
       view.querySelectorAll('.edge.lit').forEach(p => p.classList.remove('lit'));
     });
+
     el.addEventListener('click', e => {
-      if (dragMoved) { e.stopPropagation(); return; }
+      if (dragMoved) { dragMoved = false; return; }
       const note = state.filteredList.find(n => n.id === el.dataset.cid);
       if (note) openModal(note);
     });
+  });
+
+  // ── Pan drag (background only) ─────────────────────────────────────────────
+  inner.addEventListener('pointerdown', e => {
+    if (nodeDrag) return;
+    dragMoved = false;
+    // Fix: always read current constellationPan, never a stale closure variable
+    panDrag = { offsetX: e.clientX - constellationPan.x, offsetY: e.clientY - constellationPan.y };
+  });
+
+  inner.addEventListener('pointermove', e => {
+    if (!panDrag || nodeDrag) return;
+    const newX = e.clientX - panDrag.offsetX;
+    const newY = e.clientY - panDrag.offsetY;
+    if (Math.abs(newX - constellationPan.x) + Math.abs(newY - constellationPan.y) > 4) dragMoved = true;
+    constellationPan = { x: newX, y: newY };
+    document.getElementById('constel-world').style.transform = `translate(${newX}px,${newY}px)`;
+  });
+
+  inner.addEventListener('pointerup', () => {
+    if (panDrag) _constelSaveState();
+    panDrag = null;
+  });
+
+  inner.addEventListener('pointerleave', () => {
+    panDrag = null;
+    view.querySelectorAll('.edge.lit').forEach(p => p.classList.remove('lit'));
   });
 }
 
