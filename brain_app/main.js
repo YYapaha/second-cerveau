@@ -8,10 +8,11 @@ const PROJECT_ROOT = path.join(__dirname, '..');
 const ASSETS_DIR   = path.join(__dirname, 'assets');
 const API_PORT     = 7842;
 
-let win        = null;
-let tray       = null;
-let agentProc  = null;
-let serverProc = null;
+let win          = null;
+let tray         = null;
+let agentProc    = null;
+let serverProc   = null;
+let calendarProc = null;
 let statusCache = { last_sync: null, total_notes: 0 };
 let isSyncing  = false;
 let syncFailed = false;
@@ -38,28 +39,53 @@ function syncLabel() {
 
 // ─── Process management ───────────────────────────────────────────────────────
 
-function spawnAgent() {
+function spawnAgent(reprocess = false) {
   if (agentProc) return; // already running
-  agentProc = spawn('python', ['brain_agent.py'], {
+  const args = reprocess ? ['brain_agent.py', '--reprocess'] : ['brain_agent.py'];
+  agentProc = spawn('C:\\Users\\yapa\\AppData\\Local\\Programs\\Python\\Python312\\python.exe', args, {
     cwd: PROJECT_ROOT,
     windowsHide: true,
     detached: false,
     env: { ...process.env },
     stdio: ['ignore', 'pipe', 'ignore'],
-    shell: true, // required for Microsoft Store Python (app execution aliases)
+    shell: false,
   });
 
   const thisProc = agentProc; // capture reference
 
   readline.createInterface({ input: thisProc.stdout }).on('line', (line) => {
-    if (line.includes('[SYNC_START]'))      { isSyncing = true;  syncFailed = false; updateTray(); }
-    else if (line.includes('[SYNC_END]'))   { isSyncing = false; pollStatus(); }
-    else if (line.includes('[SYNC_ERROR]')) { isSyncing = false; syncFailed = true;  updateTray(); }
+    if (line.includes('[SYNC_START]')) {
+      isSyncing = true; syncFailed = false; updateTray();
+      win?.webContents.send('sync-state', 'start');
+    } else if (line.includes('[SYNC_END]')) {
+      isSyncing = false; pollStatus();
+      win?.webContents.send('sync-state', 'end');
+    } else if (line.includes('[SYNC_ERROR]')) {
+      isSyncing = false; syncFailed = true; updateTray();
+      win?.webContents.send('sync-state', 'error');
+    }
   });
 
   thisProc.on('exit', () => { // only null out if still current proc
     if (agentProc === thisProc) { agentProc = null; isSyncing = false; updateTray(); }
   });
+}
+
+function spawnCalendar() {
+  if (calendarProc) return;
+  calendarProc = spawn(
+    'C:\\Users\\yapa\\AppData\\Local\\Programs\\Python\\Python312\\python.exe',
+    ['brain_calendar.py'],
+    {
+      cwd: PROJECT_ROOT,
+      windowsHide: true,
+      detached: false,
+      env: { ...process.env },
+      stdio: 'ignore',
+      shell: false,
+    }
+  );
+  calendarProc.on('exit', () => { calendarProc = null; });
 }
 
 function killPort(port) {
@@ -76,28 +102,28 @@ function spawnServer() {
   killPort(API_PORT); // tue tout processus encore en vie sur le port (zombie de session précédente)
   setTimeout(() => {
     serverProc = spawn(
-      'python',
+      'C:\\Users\\yapa\\AppData\\Local\\Programs\\Python\\Python312\\python.exe',
       ['-m', 'uvicorn', 'brain_server:app', '--host', '127.0.0.1', '--port', String(API_PORT), '--log-level', 'warning'],
-      { cwd: PROJECT_ROOT, windowsHide: true, detached: false, env: { ...process.env }, stdio: 'ignore', shell: true }
+      { cwd: PROJECT_ROOT, windowsHide: true, detached: false, env: { ...process.env }, stdio: 'ignore', shell: false }
     );
   }, 400); // laisse le port se libérer avant de respawner
 }
 
-function restartAgent() {
+function restartAgent(reprocess = false) {
   isSyncing  = false;
   syncFailed = false;
   if (agentProc) {
-    agentProc.once('exit', () => { agentProc = null; spawnAgent(); updateTray(); });
+    agentProc.once('exit', () => { agentProc = null; spawnAgent(reprocess); updateTray(); });
     try { agentProc.kill(); } catch {}
   } else {
-    spawnAgent();
+    spawnAgent(reprocess);
     updateTray();
   }
 }
 
 function killChildren() {
   // shell:true means the direct child is cmd.exe — use taskkill to terminate the full tree
-  for (const proc of [agentProc, serverProc]) {
+  for (const proc of [agentProc, serverProc, calendarProc]) {
     if (!proc || !proc.pid) continue;
     try { spawn('taskkill', ['/F', '/T', '/PID', String(proc.pid)], { windowsHide: true, shell: false }); } catch {}
   }
@@ -132,7 +158,8 @@ function buildContextMenu() {
     { label: syncLabel(),                                    enabled: false },
     { label: `${statusCache.total_notes} notes indexées`,   enabled: false },
     { type: 'separator' },
-    { label: '↺ Relancer l\'agent', click: restartAgent },
+    { label: '↺ Relancer l\'agent',      click: () => restartAgent(false) },
+    { label: '↺ Resync complète (tout)', click: () => restartAgent(true)  },
     { type: 'separator' },
     { label: '✕ Quitter', click: () => { app.isQuitting = true; app.quit(); } },
   ]);
@@ -186,7 +213,6 @@ function createWindow() {
     },
   });
   win.loadFile('index.html');
-  win.webContents.openDevTools({ mode: 'detach' }); // DEBUG — retirer après dev
   win.maximize();
   win.on('close', (e) => {
     if (!app.isQuitting) { e.preventDefault(); win.hide(); updateTray(); }
@@ -200,6 +226,7 @@ app.whenReady().then(() => {
   IMG_SYNCING = nativeImage.createFromPath(path.join(ASSETS_DIR, 'logo-syncing-16.png'));
 
   spawnAgent();
+  spawnCalendar();
   setTimeout(spawnServer, 3000);
 
   createWindow();
@@ -208,6 +235,8 @@ app.whenReady().then(() => {
   ipcMain.on('open-url', (_, url) => {
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
   });
+
+  ipcMain.on('trigger-sync', () => restartAgent(false));
 
   pollStatus();
   setInterval(pollStatus, 30_000);
