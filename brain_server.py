@@ -15,10 +15,25 @@ from brain_agent import init_db as _init_db, get_dropbox
 
 DB_PATH = Path(__file__).parent / "brain.db"
 
+from calendar_db import CAL_DB_PATH as _CAL_DB_PATH, init_calendar_db, get_cal_db as _get_cal_db
+import uuid as _uuid
+
+# CAL_DB_PATH is a module-level variable so tests can monkeypatch it.
+# We only set it here if not already set (e.g. by monkeypatch before a reload).
+if "CAL_DB_PATH" not in dir():
+    CAL_DB_PATH = _CAL_DB_PATH
+
+
+def get_cal_db():
+    import brain_server as _self
+    return _get_cal_db(_self.CAL_DB_PATH)
+
 
 @asynccontextmanager
 async def lifespan(app):
     _init_db()  # Crée les tables si elles n'existent pas encore
+    import brain_server as _self
+    init_calendar_db(_self.CAL_DB_PATH)
     yield
 
 app = FastAPI(title="Brain Server", version="1.0.0", lifespan=lifespan)
@@ -350,3 +365,64 @@ def chat(body: dict):
             for n in top5
         ],
     }
+
+
+# ── Calendrier ────────────────────────────────────────────────────────────────
+
+_VALID_TYPES = {"rdv", "anniversaire", "tache", "deadline"}
+
+
+@app.get("/calendar/events")
+def list_calendar_events(
+    from_date: Optional[str] = Query(None, alias="from"),
+    to_date:   Optional[str] = Query(None, alias="to"),
+    type:      Optional[str] = Query(None),
+):
+    conn = get_cal_db()
+    query = "SELECT e.*, GROUP_CONCAT(r.id) as reminder_ids FROM events e LEFT JOIN reminders r ON r.event_id = e.id"
+    params: list = []
+    conditions = []
+    if from_date:
+        conditions.append("e.date_debut >= ?")
+        params.append(from_date)
+    if to_date:
+        conditions.append("e.date_debut <= ?")
+        params.append(to_date)
+    if type:
+        conditions.append("e.type = ?")
+        params.append(type)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " GROUP BY e.id ORDER BY e.date_debut"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.post("/calendar/events", status_code=201)
+def create_calendar_event(body: dict):
+    titre = (body.get("titre") or "").strip()
+    type_ = (body.get("type") or "").strip()
+    date_debut = (body.get("date_debut") or "").strip()
+
+    if not titre:
+        raise HTTPException(status_code=422, detail="titre requis")
+    if type_ not in _VALID_TYPES:
+        raise HTTPException(status_code=422, detail=f"type invalide — valeurs: {sorted(_VALID_TYPES)}")
+    if not date_debut:
+        raise HTTPException(status_code=422, detail="date_debut requis")
+
+    now = datetime.utcnow().isoformat()
+    event_id = str(_uuid.uuid4())
+    conn = get_cal_db()
+    conn.execute(
+        "INSERT INTO events (id,titre,type,date_debut,date_fin,description,source,created_at,updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (event_id, titre, type_, date_debut,
+         body.get("date_fin"), body.get("description"),
+         body.get("source", "electron"), now, now)
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
+    conn.close()
+    return dict(row)
