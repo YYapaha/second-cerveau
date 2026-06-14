@@ -72,3 +72,61 @@ def test_list_events_filter_by_type(client):
     r = client.get("/calendar/events?type=rdv")
     assert r.status_code == 200
     assert all(e["type"] == "rdv" for e in r.json())
+
+
+# --- Tests event unique ---
+
+@pytest.fixture
+def created_event(client):
+    r = client.post("/calendar/events", json={
+        "titre": "RDV Médecin", "type": "rdv", "date_debut": "2026-06-19T14:00"
+    })
+    return r.json()
+
+
+def test_get_event_by_id(client, created_event):
+    r = client.get(f"/calendar/events/{created_event['id']}")
+    assert r.status_code == 200
+    assert r.json()["titre"] == "RDV Médecin"
+
+
+def test_get_event_not_found(client):
+    r = client.get("/calendar/events/does-not-exist")
+    assert r.status_code == 404
+
+
+def test_patch_event_titre(client, created_event):
+    r = client.patch(f"/calendar/events/{created_event['id']}", json={"titre": "RDV Dermato"})
+    assert r.status_code == 200
+    assert r.json()["titre"] == "RDV Dermato"
+
+
+def test_delete_event(client, created_event):
+    r = client.delete(f"/calendar/events/{created_event['id']}")
+    assert r.status_code == 204
+    r2 = client.get(f"/calendar/events/{created_event['id']}")
+    assert r2.status_code == 404
+
+
+def test_add_reminder(client, created_event):
+    r = client.post(f"/calendar/events/{created_event['id']}/reminders", json={
+        "offset_type": "days", "offset_value": 1
+    })
+    assert r.status_code == 201
+    assert r.json()["offset_type"] == "days"
+
+
+def test_add_reminder_invalid_type(client, created_event):
+    r = client.post(f"/calendar/events/{created_event['id']}/reminders", json={
+        "offset_type": "invalid", "offset_value": 1
+    })
+    assert r.status_code == 422
+
+
+def test_delete_reminder(client, created_event):
+    r = client.post(f"/calendar/events/{created_event['id']}/reminders", json={
+        "offset_type": "hours", "offset_value": 1
+    })
+    rid = r.json()["id"]
+    r2 = client.delete(f"/calendar/events/{created_event['id']}/reminders/{rid}")
+    assert r2.status_code == 204

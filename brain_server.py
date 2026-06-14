@@ -426,3 +426,101 @@ def create_calendar_event(body: dict):
     row = conn.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
     conn.close()
     return dict(row)
+
+
+@app.get("/calendar/events/{event_id}")
+def get_calendar_event(event_id: str):
+    conn = get_cal_db()
+    row = conn.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="événement introuvable")
+    reminders = conn.execute(
+        "SELECT * FROM reminders WHERE event_id=? ORDER BY offset_type, offset_value",
+        (event_id,)
+    ).fetchall()
+    conn.close()
+    return {**dict(row), "reminders": [dict(r) for r in reminders]}
+
+
+@app.patch("/calendar/events/{event_id}")
+def patch_calendar_event(event_id: str, body: dict):
+    conn = get_cal_db()
+    row = conn.execute("SELECT id FROM events WHERE id=?", (event_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="événement introuvable")
+
+    allowed = {"titre", "type", "date_debut", "date_fin", "description"}
+    updates = {k: v for k, v in body.items() if k in allowed}
+    if not updates:
+        raise HTTPException(status_code=422, detail="aucun champ modifiable fourni")
+    if "type" in updates and updates["type"] not in _VALID_TYPES:
+        raise HTTPException(status_code=422, detail="type invalide")
+
+    updates["updated_at"] = datetime.utcnow().isoformat()
+    set_clause = ", ".join(f"{k}=?" for k in updates)
+    conn.execute(
+        f"UPDATE events SET {set_clause} WHERE id=?",
+        [*updates.values(), event_id]
+    )
+    conn.commit()
+    updated = conn.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
+    conn.close()
+    return dict(updated)
+
+
+@app.delete("/calendar/events/{event_id}", status_code=204)
+def delete_calendar_event(event_id: str):
+    conn = get_cal_db()
+    row = conn.execute("SELECT id FROM events WHERE id=?", (event_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="événement introuvable")
+    conn.execute("DELETE FROM events WHERE id=?", (event_id,))
+    conn.commit()
+    conn.close()
+
+
+_VALID_OFFSET_TYPES = {"minutes", "hours", "days", "weeks"}
+
+
+@app.post("/calendar/events/{event_id}/reminders", status_code=201)
+def add_reminder(event_id: str, body: dict):
+    conn = get_cal_db()
+    row = conn.execute("SELECT id FROM events WHERE id=?", (event_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="événement introuvable")
+
+    offset_type = body.get("offset_type", "")
+    if offset_type not in _VALID_OFFSET_TYPES:
+        conn.close()
+        raise HTTPException(status_code=422, detail="offset_type invalide")
+    if "offset_value" not in body:
+        conn.close()
+        raise HTTPException(status_code=422, detail="offset_value requis")
+
+    rid = str(_uuid.uuid4())
+    conn.execute(
+        "INSERT INTO reminders (id,event_id,offset_type,offset_value,send_time) VALUES (?,?,?,?,?)",
+        (rid, event_id, offset_type, int(body["offset_value"]), body.get("send_time"))
+    )
+    conn.commit()
+    reminder = conn.execute("SELECT * FROM reminders WHERE id=?", (rid,)).fetchone()
+    conn.close()
+    return dict(reminder)
+
+
+@app.delete("/calendar/events/{event_id}/reminders/{reminder_id}", status_code=204)
+def delete_reminder(event_id: str, reminder_id: str):
+    conn = get_cal_db()
+    row = conn.execute(
+        "SELECT id FROM reminders WHERE id=? AND event_id=?", (reminder_id, event_id)
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="reminder introuvable")
+    conn.execute("DELETE FROM reminders WHERE id=?", (reminder_id,))
+    conn.commit()
+    conn.close()
