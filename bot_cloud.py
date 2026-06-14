@@ -498,6 +498,115 @@ async def cmd_rdv(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+async def cmd_agenda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message:
+        return
+    events = _read_calendar_dropbox()
+    today = datetime.now().date().isoformat()
+    upcoming = sorted(
+        [e for e in events if not e.get("deleted") and e.get("date_debut", "") >= today],
+        key=lambda e: e["date_debut"]
+    )[:10]
+
+    if not upcoming:
+        await update.message.reply_text("Aucun événement à venir. Utilise `/rdv` pour en ajouter.")
+        return
+
+    _ICONS_BOT = {"rdv": "📅", "anniversaire": "🎂", "tache": "✅", "deadline": "⏰"}
+    for ev in upcoming:
+        icon = _ICONS_BOT.get(ev.get("type", "rdv"), "📅")
+        date_str = ev.get("date_debut", "?")
+        titre = ev.get("titre", "?")
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✏️ Éditer", callback_data=f"cal:edit:{ev['id']}"),
+            InlineKeyboardButton("🗑️ Supprimer", callback_data=f"cal:del:{ev['id']}"),
+        ]])
+        await update.message.reply_text(
+            f"{icon} *{titre}*\n📆 `{date_str}`",
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
+
+
+async def cb_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    data = query.data  # ex: "cal:del:uuid", "cal:confirm:uuid", "cal:edit:uuid"
+
+    parts = data.split(":")
+    action = parts[1] if len(parts) > 1 else ""
+    event_id = parts[2] if len(parts) > 2 else ""
+
+    # ── Confirmation /rdv ───────────────────────────────────────────────
+    if action == "confirm":
+        event = _pending_rdv.pop(query.message.chat.id, None)
+        if not event or event["id"] != event_id:
+            await query.edit_message_text("❌ Session expirée. Relance `/rdv`.")
+            return
+        _upsert_calendar_event(event)
+        _ICONS_BOT = {"rdv": "📅", "anniversaire": "🎂", "tache": "✅", "deadline": "⏰"}
+        icon = _ICONS_BOT.get(event["type"], "📅")
+        await query.edit_message_text(
+            f"✅ Enregistré !\n{icon} *{event['titre']}* — `{event['date_debut']}`",
+            parse_mode="Markdown"
+        )
+        return
+
+    if action == "cancel_rdv":
+        _pending_rdv.pop(query.message.chat.id, None)
+        await query.edit_message_text("❌ Annulé. Relance `/rdv` avec plus de précision.")
+        return
+
+    # ── Suppression ─────────────────────────────────────────────────────
+    if action == "del":
+        events = _read_calendar_dropbox()
+        ev = next((e for e in events if e["id"] == event_id), None)
+        if not ev:
+            await query.edit_message_text("❌ Événement introuvable.")
+            return
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Oui, supprimer", callback_data=f"cal:delok:{event_id}"),
+            InlineKeyboardButton("Non", callback_data=f"cal:delno:{event_id}"),
+        ]])
+        await query.edit_message_text(
+            f"Supprimer *{ev['titre']}* ?", parse_mode="Markdown", reply_markup=keyboard
+        )
+        return
+
+    if action == "delok":
+        events = _read_calendar_dropbox()
+        for ev in events:
+            if ev["id"] == event_id:
+                ev["deleted"] = True
+                ev["updated_at"] = datetime.now().isoformat()
+        _write_calendar_dropbox(events)
+        await query.edit_message_text("🗑️ Événement supprimé.")
+        return
+
+    if action == "delno":
+        await query.edit_message_text("OK, annulé.")
+        return
+
+    # ── Édition ─────────────────────────────────────────────────────────
+    if action == "edit":
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Titre", callback_data=f"cal:edittitle:{event_id}"),
+            InlineKeyboardButton("Date/Heure", callback_data=f"cal:editdate:{event_id}"),
+        ]])
+        await query.edit_message_text("Que veux-tu modifier ?", reply_markup=keyboard)
+        return
+
+    if action == "edittitle":
+        context.user_data["cal_edit"] = {"event_id": event_id, "field": "titre"}
+        await query.edit_message_text("Envoie le nouveau titre :")
+        return
+
+    if action == "editdate":
+        context.user_data["cal_edit"] = {"event_id": event_id, "field": "date"}
+        await query.edit_message_text("Envoie la nouvelle date (ex: demain à 14h) :")
+        return
+
+
 # ── Handlers commandes ────────────────────────────────────────────────────────
 
 async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -701,6 +810,27 @@ async def cmd_monid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def traiter_texte(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     texte       = (update.message.text or "").strip()
     premier_mot = texte.split()[0].lower() if texte else ""
+
+    # ── Édition calendrier en attente ─────────────────────────────────
+    cal_edit = context.user_data.pop("cal_edit", None)
+    if cal_edit:
+        events = _read_calendar_dropbox()
+        ev = next((e for e in events if e["id"] == cal_edit["event_id"]), None)
+        if ev:
+            field = cal_edit["field"]
+            if field == "titre":
+                ev["titre"] = update.message.text.strip()
+            elif field == "date":
+                parsed = await _parse_event_from_text(update.message.text)
+                if parsed:
+                    ev["date_debut"] = parsed["date_debut"]
+            ev["updated_at"] = datetime.now().isoformat()
+            _write_calendar_dropbox(events)
+            await update.message.reply_text(
+                f"✅ Modifié : *{ev['titre']}* — `{ev['date_debut']}`",
+                parse_mode="Markdown"
+            )
+        return
 
     # Mode édition en attente
     edit = context.user_data.get("pending_edit")
@@ -1283,7 +1413,9 @@ def main() -> None:
     app.add_handler(CommandHandler("chercher",  cmd_chercher,  filters=_CHAT_FILTER))
     app.add_handler(CommandHandler("ping",      cmd_ping,      filters=_CHAT_FILTER))
     app.add_handler(CommandHandler("rdv",       cmd_rdv,       filters=_CHAT_FILTER))
+    app.add_handler(CommandHandler("agenda",    cmd_agenda,    filters=_CHAT_FILTER))
     app.add_handler(CommandHandler("monid",     cmd_monid))  # pas de filtre : utile pour setup
+    app.add_handler(CallbackQueryHandler(cb_calendar, pattern=r"^cal:"))
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(_CHAT_FILTER & filters.TEXT & ~filters.COMMAND, traiter_texte))
     app.add_handler(MessageHandler(_CHAT_FILTER & filters.PHOTO,        traiter_photo))
