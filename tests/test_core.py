@@ -18,6 +18,12 @@ def test_extraire_champ_format_b():
     md = "## TAGS\n#python #api\n## TITRE\nMon titre"
     assert extraire_champ(md, "TAGS") == "#python #api"
 
+def test_extraire_champ_format_b_avec_colon():
+    # Format B avec ` : ` dans le titre de section — produit par Llama sur certaines fiches
+    md = "## IDEE_PRINCIPALE : \nLa méthode RAG divise les documents en chunks.\n## TAGS : \n#rag"
+    assert extraire_champ(md, "IDEE_PRINCIPALE") == "La méthode RAG divise les documents en chunks."
+    assert extraire_champ(md, "TAGS") == "#rag"
+
 def test_extraire_champ_absent_retourne_vide():
     assert extraire_champ("**TITRE** : test", "TAGS") == ""
 
@@ -134,6 +140,15 @@ def test_analyser_contenu_appelle_appeler_groq():
     with patch("core.appeler_groq", return_value=fiche_attendue) as mock_groq:
         result = analyser_contenu("contenu de test", "https://example.com")
     mock_groq.assert_called_once()
+    assert "# Titre" in result
+    assert "**URL_SOURCE** : https://example.com" in result
+
+
+def test_analyser_contenu_source_non_url_pas_injection():
+    fiche_attendue = "# Titre\n**TAGS** : #test"
+    with patch("core.appeler_groq", return_value=fiche_attendue):
+        result = analyser_contenu("contenu de test", "telegram-note")
+    assert "**URL_SOURCE**" not in result
     assert result == fiche_attendue
 
 # ── DOMAINE dans PROMPT_ANALYSE ───────────────────────────────────────────────

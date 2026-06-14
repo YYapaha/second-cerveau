@@ -1,9 +1,13 @@
 # Obligatoires
 groq>=0.9.0
 openai>=1.0.0
+dropbox>=12.0.0            # Sync Dropbox (brain_agent + brain_server)
 requests>=2.34.2
 trafilatura>=2.0.0
 python-dotenv>=1.2.1
+numpy>=1.26.0              # Embeddings vectoriels (brain_agent + brain_server)
+fastapi>=0.110.0           # API locale (brain_server)
+uvicorn>=0.29.0            # Serveur ASGI (brain_server)
 watchdog>=6.0.0            # Surveillance dossier inbox
 python-telegram-bot>=22.7  # Bot Telegram
 

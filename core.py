@@ -136,8 +136,8 @@ def extraire_champ(fiche_md: str, champ: str) -> str:
     match = re.search(rf"\*\*{champ}\*\*\s*:\s*(.+?)(?=\n\*\*|\n##|\n---|\Z)", fiche_md, re.DOTALL)
     if match:
         return match.group(1).strip()
-    # Format B : ## CHAMP\nvaleur  (format alternatif produit par certains modèles)
-    match = re.search(rf"^## {champ}\s*\n(.+?)(?=\n## |\n---|\Z)", fiche_md, re.MULTILINE | re.DOTALL)
+    # Format B : ## CHAMP\nvaleur  ou  ## CHAMP : \nvaleur  (format alternatif produit par certains modèles)
+    match = re.search(rf"^## {champ}[ \t:]*\n(.+?)(?=\n## |\n---|\Z)", fiche_md, re.MULTILINE | re.DOTALL)
     if match:
         return match.group(1).strip()
     if champ == "TITRE":
@@ -236,10 +236,14 @@ def analyser_contenu(contenu: str, source: str) -> str:
         date_heure=datetime.now().strftime("%d/%m/%Y %H:%M"),
         contenu=contenu,
     )
-    return appeler_groq([
+    fiche_md = appeler_groq([
         {"role": "system", "content": _SYSTEM_MSG},
         {"role": "user",   "content": prompt},
     ])
+    # Injecter l'URL source comme champ structuré — le LLM ne la reproduit pas de manière fiable
+    if source.startswith(("http://", "https://")):
+        fiche_md = fiche_md.rstrip() + f"\n**URL_SOURCE** : {source}"
+    return fiche_md
 
 
 def appeler_groq(messages: list[dict], max_tokens: int = 4096) -> str:
