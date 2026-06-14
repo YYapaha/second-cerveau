@@ -380,6 +380,124 @@ async def _extraire_url_avec_msg(msg, url: str):
         await msg.edit_text(erreur_msg(e))
         return None, msg
 
+# ── Calendrier helpers ────────────────────────────────────────────────────────
+
+DROPBOX_CALENDAR = "/Applications/Joplin/calendar_events.json"
+_CAL_TYPES = {"rdv", "anniversaire", "tache", "deadline"}
+
+
+def _read_calendar_dropbox() -> list[dict]:
+    from dropbox_client import lire_fichier_dropbox
+    try:
+        content = lire_fichier_dropbox(DROPBOX_CALENDAR)
+        return json.loads(content) if content else []
+    except Exception:
+        return []
+
+
+def _write_calendar_dropbox(events: list[dict]) -> None:
+    import dropbox as _dbx_mod
+    from brain_agent import get_dropbox
+    dbx = get_dropbox()
+    data = json.dumps(events, ensure_ascii=False, indent=2).encode("utf-8")
+    dbx.files_upload(data, DROPBOX_CALENDAR, mode=_dbx_mod.files.WriteMode.overwrite)
+
+
+def _upsert_calendar_event(event: dict) -> None:
+    events = _read_calendar_dropbox()
+    existing = next((e for e in events if e["id"] == event["id"]), None)
+    if existing:
+        existing.update(event)
+    else:
+        events.append(event)
+    _write_calendar_dropbox(events)
+
+
+async def _parse_event_from_text(text: str) -> dict | None:
+    """Parse un texte libre en event structuré via Groq."""
+    from groq import Groq
+    today = datetime.now().strftime("%Y-%m-%d")
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
+    try:
+        resp = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"Aujourd'hui : {today}. Timezone: Europe/Paris. "
+                        "Tu extrais les informations d'un événement depuis un texte en français. "
+                        "Réponds UNIQUEMENT en JSON valide avec les clés : "
+                        "titre (string), type (rdv|anniversaire|tache|deadline), "
+                        "date_debut (ISO 8601 : YYYY-MM-DD ou YYYY-MM-DDTHH:MM). "
+                        "Si l'heure n'est pas précisée, utilise seulement la date (YYYY-MM-DD). "
+                        "Résous les dates relatives (demain, lundi prochain, dans 3 jours…) par rapport à aujourd'hui."
+                    )
+                },
+                {"role": "user", "content": text}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0,
+        )
+        data = json.loads(resp.choices[0].message.content)
+        if data.get("type") not in _CAL_TYPES:
+            data["type"] = "rdv"
+        return data
+    except Exception as e:
+        log.error("Erreur parsing /rdv : %s", e)
+        return None
+
+
+# État temporaire pour les confirmations /rdv en attente
+_pending_rdv: dict[int, dict] = {}  # chat_id → event dict
+
+
+async def cmd_rdv(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message:
+        return
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text(
+            "Usage : `/rdv [description]`\nEx: `/rdv médecin demain à 14h`",
+            parse_mode="Markdown"
+        )
+        return
+
+    await update.message.reply_text("⏳ Analyse en cours…")
+    parsed = await _parse_event_from_text(text)
+    if not parsed:
+        await update.message.reply_text("❌ Je n'ai pas réussi à analyser cet événement. Réessaie.")
+        return
+
+    _ICONS_BOT = {"rdv": "📅", "anniversaire": "🎂", "tache": "✅", "deadline": "⏰"}
+    icon = _ICONS_BOT.get(parsed.get("type", "rdv"), "📅")
+    date_str = parsed.get("date_debut", "?")
+
+    event = {
+        "id": str(__import__("uuid").uuid4()),
+        "titre": parsed["titre"],
+        "type": parsed.get("type", "rdv"),
+        "date_debut": date_str,
+        "date_fin": None,
+        "description": None,
+        "reminders": [],
+        "deleted": False,
+        "source": "telegram",
+        "updated_at": datetime.now().isoformat(),
+    }
+    _pending_rdv[update.effective_chat.id] = event
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Oui", callback_data=f"cal:confirm:{event['id']}"),
+        InlineKeyboardButton("✏️ Corriger", callback_data=f"cal:cancel_rdv"),
+    ]])
+    await update.message.reply_text(
+        f"J'ai compris :\n{icon} *{event['titre']}* — `{date_str}`\n\nC'est bien ça ?",
+        parse_mode="Markdown",
+        reply_markup=keyboard,
+    )
+
+
 # ── Handlers commandes ────────────────────────────────────────────────────────
 
 async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1164,6 +1282,7 @@ def main() -> None:
     app.add_handler(CommandHandler("done",      cmd_done,      filters=_CHAT_FILTER))
     app.add_handler(CommandHandler("chercher",  cmd_chercher,  filters=_CHAT_FILTER))
     app.add_handler(CommandHandler("ping",      cmd_ping,      filters=_CHAT_FILTER))
+    app.add_handler(CommandHandler("rdv",       cmd_rdv,       filters=_CHAT_FILTER))
     app.add_handler(CommandHandler("monid",     cmd_monid))  # pas de filtre : utile pour setup
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(_CHAT_FILTER & filters.TEXT & ~filters.COMMAND, traiter_texte))
