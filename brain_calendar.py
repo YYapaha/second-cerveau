@@ -80,3 +80,150 @@ def format_reminder_message(
         timing = f"dans {offset_value} min"
 
     return f"{icon} *{label} :* {titre} — {timing} ({date_str})"
+
+
+def send_telegram(text: str) -> None:
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        log.warning("TELEGRAM_TOKEN ou CHAT_ID manquant — rappel non envoyé")
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+    except Exception as e:
+        log.error("Erreur envoi Telegram : %s", e)
+
+
+async def loop_reminders() -> None:
+    """Vérifie les rappels toutes les heures."""
+    while True:
+        try:
+            now = datetime.utcnow()
+            conn = get_cal_db()
+            rows = conn.execute(
+                "SELECT r.id, r.offset_type, r.offset_value, r.send_time, "
+                "e.titre, e.type, e.date_debut "
+                "FROM reminders r JOIN events e ON r.event_id = e.id "
+                "WHERE r.sent = 0"
+            ).fetchall()
+            for r in rows:
+                try:
+                    event_date = datetime.fromisoformat(r["date_debut"])
+                except ValueError:
+                    continue
+                if is_reminder_due(event_date, r["offset_type"], r["offset_value"], r["send_time"], now):
+                    msg = format_reminder_message(
+                        r["titre"], r["type"], r["date_debut"], r["offset_type"], r["offset_value"]
+                    )
+                    send_telegram(msg)
+                    conn.execute(
+                        "UPDATE reminders SET sent=1, sent_at=? WHERE id=?",
+                        (now.isoformat(), r["id"])
+                    )
+                    conn.commit()
+                    log.info("Rappel envoyé : %s", r["titre"])
+            conn.close()
+        except Exception as e:
+            log.error("Erreur boucle rappels : %s", e)
+        await asyncio.sleep(3600)  # toutes les heures
+
+
+def _read_dropbox_calendar() -> list[dict]:
+    try:
+        import dropbox as _dbx_mod
+        from brain_agent import get_dropbox
+        dbx = get_dropbox()
+        _, dl = dbx.files_download(DROPBOX_CALENDAR)
+        return json.loads(dl.content.decode("utf-8"))
+    except Exception:
+        return []
+
+
+def _write_dropbox_calendar(events: list[dict]) -> None:
+    try:
+        import dropbox as _dbx_mod
+        from brain_agent import get_dropbox
+        dbx = get_dropbox()
+        data = json.dumps(events, ensure_ascii=False, indent=2).encode("utf-8")
+        dbx.files_upload(data, DROPBOX_CALENDAR, mode=_dbx_mod.files.WriteMode.overwrite)
+    except Exception as e:
+        log.error("Erreur écriture Dropbox calendar : %s", e)
+
+
+async def loop_dropbox_sync() -> None:
+    """Sync bidirectionnelle toutes les 5 minutes."""
+    while True:
+        try:
+            remote_events = _read_dropbox_calendar()
+
+            conn = get_cal_db()
+
+            # Dropbox → calendar.db : upsert events non-supprimés, supprimer les deleted
+            for ev in remote_events:
+                if ev.get("deleted"):
+                    conn.execute("DELETE FROM events WHERE id=?", (ev["id"],))
+                    continue
+                now_iso = datetime.utcnow().isoformat()
+                conn.execute("""
+                    INSERT INTO events (id,titre,type,date_debut,date_fin,description,source,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        titre=excluded.titre, type=excluded.type, date_debut=excluded.date_debut,
+                        date_fin=excluded.date_fin, description=excluded.description,
+                        updated_at=excluded.updated_at
+                """, (
+                    ev["id"], ev["titre"], ev["type"], ev["date_debut"],
+                    ev.get("date_fin"), ev.get("description"),
+                    ev.get("source", "telegram"), ev.get("updated_at", now_iso), ev.get("updated_at", now_iso)
+                ))
+                # Sync reminders : supprime les anciens, reinsère
+                conn.execute("DELETE FROM reminders WHERE event_id=? AND sent=0", (ev["id"],))
+                for rem in ev.get("reminders", []):
+                    conn.execute(
+                        "INSERT OR IGNORE INTO reminders (id,event_id,offset_type,offset_value,send_time) "
+                        "VALUES (?,?,?,?,?)",
+                        (str(_uuid.uuid4()), ev["id"], rem["offset_type"], rem["offset_value"], rem.get("send_time"))
+                    )
+            conn.commit()
+
+            # calendar.db → Dropbox : export complet
+            all_events = conn.execute(
+                "SELECT e.*, "
+                "(SELECT json_group_array(json_object('offset_type',r.offset_type,'offset_value',r.offset_value,'send_time',r.send_time)) "
+                " FROM reminders r WHERE r.event_id=e.id) as reminders_json "
+                "FROM events e ORDER BY e.date_debut"
+            ).fetchall()
+            conn.close()
+
+            export = []
+            for row in all_events:
+                d = dict(row)
+                try:
+                    d["reminders"] = json.loads(d.pop("reminders_json") or "[]")
+                except (ValueError, KeyError):
+                    d["reminders"] = []
+                d["deleted"] = False
+                export.append(d)
+
+            _write_dropbox_calendar(export)
+            log.info("Sync Dropbox : %d events exportés", len(export))
+
+        except Exception as e:
+            log.error("Erreur sync Dropbox : %s", e)
+
+        await asyncio.sleep(300)  # toutes les 5 minutes
+
+
+async def main() -> None:
+    init_calendar_db()
+    log.info("brain_calendar démarré")
+    await asyncio.gather(
+        loop_reminders(),
+        loop_dropbox_sync(),
+    )
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
