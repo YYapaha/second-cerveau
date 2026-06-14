@@ -22,6 +22,8 @@ const META_DOM = { key: 'meta', label: 'Méta-fiches', color: 'var(--d-meta)' };
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
+let _calendarInitialized = false;
+
 let state = {
   mode: 'grille',
   notes: [],
@@ -215,17 +217,20 @@ function renderTopbar() {
   const btnG = document.getElementById('btn-grille');
   const btnC = document.getElementById('btn-constellation');
   const btnZ = document.getElementById('btn-zen');
+  const btnCal = document.getElementById('btn-calendar');
   btnG.innerHTML = `${ICONS.grid} Grille`;
   btnC.innerHTML = `${ICONS.nodes} Constellation`;
   btnZ.innerHTML = `${ICONS.zen} Zen`;
   btnG.classList.toggle('active', state.mode === 'grille');
   btnC.classList.toggle('active', state.mode === 'constellation');
   btnZ.classList.toggle('active', state.mode === 'zen');
+  if (btnCal) btnCal.classList.toggle('active', state.mode === 'calendar');
 
   if (!btnG._bound) {
     btnG.addEventListener('click', () => setState({ mode: 'grille' }));
     btnC.addEventListener('click', () => setState({ mode: 'constellation' }));
     btnZ.addEventListener('click', () => setState({ mode: 'zen' }));
+    if (btnCal) btnCal.addEventListener('click', () => setState({ mode: 'calendar' }));
     btnG._bound = true;
   }
 
@@ -1058,19 +1063,38 @@ function renderGrille() {
 
 function render() {
   renderTopbar();
-  const isZen = state.mode === 'zen';
+  const isZen      = state.mode === 'zen';
+  const isCalendar = state.mode === 'calendar';
 
   document.getElementById('zen-view').classList.toggle('hidden', !isZen);
-  document.getElementById('blocs-section').style.display = isZen ? 'none' : '';
+  document.getElementById('blocs-section').style.display = (isZen || isCalendar) ? 'none' : '';
 
   if (isZen) {
     document.getElementById('grille-view').classList.add('hidden');
     document.getElementById('constel-view').classList.add('hidden');
+    document.getElementById('calendar-view').classList.add('hidden');
     activateZen();
     return;
   }
 
   deactivateZen();
+
+  if (isCalendar) {
+    document.getElementById('grille-view').classList.add('hidden');
+    document.getElementById('constel-view').classList.add('hidden');
+    document.getElementById('calendar-view').classList.remove('hidden');
+    const sb = document.getElementById('statusbar');
+    if (sb) sb.classList.add('hidden');
+    if (!_calendarInitialized) {
+      _calendarInitialized = true;
+      window.calendarModule?.init();
+    } else {
+      window.calendarModule?.refresh();
+    }
+    return;
+  }
+
+  document.getElementById('calendar-view').classList.add('hidden');
 
   const sb = document.getElementById('statusbar');
   if (sb) sb.classList.toggle('hidden', state.mode !== 'grille');
