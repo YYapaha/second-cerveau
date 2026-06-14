@@ -33,6 +33,7 @@
           <button id="btn-grille"></button>
           <button id="btn-constellation"></button>
           <button id="btn-zen"></button>
+          <button id="btn-calendar" class="tab-btn" data-tab="calendar">📅 Calendrier</button>
         </div>
         <button id="btn-refresh" title="Rafraîchir" aria-label="Rafraîchir les notes"></button>
         <span class="pill-stat" id="pill-stat"><span class="dot"></span></span>
@@ -61,6 +62,81 @@
 
       <!-- Onglet Zen -->
       <div id="zen-view" class="hidden"></div>
+
+      <!-- Vue Calendrier (cachée par défaut) -->
+      <div id="calendar-view" class="view hidden">
+        <div class="cal-wrapper">
+          <!-- Colonne gauche : mini-grille -->
+          <div class="cal-left">
+            <button id="cal-add-btn" class="cal-add-btn">+ Ajouter un événement</button>
+            <div class="cal-month-nav">
+              <button id="cal-prev">◀</button>
+              <span id="cal-month-label"></span>
+              <button id="cal-next">▶</button>
+            </div>
+            <div id="cal-mini-grid" class="cal-mini-grid"></div>
+          </div>
+          <!-- Colonne droite : agenda -->
+          <div class="cal-right">
+            <div class="cal-agenda-header">
+              <span class="cal-agenda-title">Prochains événements</span>
+              <div class="cal-filters" id="cal-filters">
+                <button class="cal-filter active" data-type="all">Tous</button>
+                <button class="cal-filter" data-type="rdv">📅 RDV</button>
+                <button class="cal-filter" data-type="anniversaire">🎂</button>
+                <button class="cal-filter" data-type="tache">✅</button>
+                <button class="cal-filter" data-type="deadline">⏰</button>
+              </div>
+            </div>
+            <div id="cal-agenda-list" class="cal-agenda-list"></div>
+          </div>
+        </div>
+
+        <!-- Modale ajout/édition -->
+        <div id="cal-modal-overlay" class="cal-modal-overlay hidden">
+          <div class="cal-modal">
+            <div class="cal-modal-title" id="cal-modal-title">Nouvel événement</div>
+            <input type="hidden" id="cal-event-id">
+            <div class="cal-field">
+              <label>Titre</label>
+              <input type="text" id="cal-f-titre" placeholder="Ex: RDV Médecin, Anniversaire papa…">
+            </div>
+            <div class="cal-field">
+              <label>Type</label>
+              <select id="cal-f-type">
+                <option value="rdv">📅 RDV</option>
+                <option value="anniversaire">🎂 Anniversaire</option>
+                <option value="tache">✅ Tâche</option>
+                <option value="deadline">⏰ Deadline</option>
+              </select>
+            </div>
+            <div class="cal-field">
+              <label>Date &amp; heure</label>
+              <input type="datetime-local" id="cal-f-date">
+            </div>
+            <div class="cal-field">
+              <label>Description (optionnel)</label>
+              <textarea id="cal-f-desc" placeholder="Notes, adresse, contexte…"></textarea>
+            </div>
+            <div class="cal-field">
+              <label>Rappels</label>
+              <div class="cal-reminder-chips" id="cal-reminder-chips">
+                <div class="cal-chip" data-type="weeks" data-value="1">S-1</div>
+                <div class="cal-chip" data-type="days" data-value="7">J-7</div>
+                <div class="cal-chip" data-type="days" data-value="3">J-3</div>
+                <div class="cal-chip" data-type="days" data-value="1">J-1</div>
+                <div class="cal-chip" data-type="hours" data-value="2">H-2</div>
+                <div class="cal-chip" data-type="hours" data-value="1">H-1</div>
+                <div class="cal-chip" data-type="days" data-value="0" data-send-time="09:00">J-0 matin</div>
+              </div>
+            </div>
+            <div class="cal-modal-actions">
+              <button id="cal-modal-cancel" class="cal-btn-cancel">Annuler</button>
+              <button id="cal-modal-save" class="cal-btn-save">Enregistrer</button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Status strip (remplace les corner stats) -->
       <div class="statusbar" id="statusbar"></div>
